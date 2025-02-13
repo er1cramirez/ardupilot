@@ -271,6 +271,12 @@
 #endif
 
 //////////////////////////////////////////////////////////////////////////////
+// Velocity Control mode
+#ifndef MODE_VELCTRL_ENABLED
+ # define MODE_VELCTRL_ENABLED 1
+#endif
+
+//////////////////////////////////////////////////////////////////////////////
 // RADIO CONFIGURATION
 //////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
@@ -382,19 +388,19 @@
 #endif
 
 #ifndef ACRO_Y_EXPO_DEFAULT
- #define ACRO_Y_EXPO_DEFAULT        0.0f    // ACRO yaw expo parameter default
+ # define ACRO_Y_EXPO_DEFAULT        0.0f    // ACRO yaw expo parameter default
 #endif
 
 #ifndef ACRO_THR_MID_DEFAULT
- #define ACRO_THR_MID_DEFAULT       0.0f
+ # define ACRO_THR_MID_DEFAULT       0.0f
 #endif
 
 #ifndef ACRO_RP_RATE_DEFAULT
- #define ACRO_RP_RATE_DEFAULT      360      // ACRO roll and pitch rotation rate parameter default in deg/s
+ # define ACRO_RP_RATE_DEFAULT      360      // ACRO roll and pitch rotation rate parameter default in deg/s
 #endif
 
 #ifndef ACRO_Y_RATE_DEFAULT
- #define ACRO_Y_RATE_DEFAULT       202.5    // ACRO yaw rotation rate parameter default in deg/s
+ # define ACRO_Y_RATE_DEFAULT       202.5    // ACRO yaw rotation rate parameter default in deg/s
 #endif
 
 // RTL Mode

@@ -100,7 +100,7 @@ public:
         AUTOROTATE =   26,  // Autonomous autorotation
         AUTO_RTL =     27,  // Auto RTL, this is not a true mode, AUTO will report as this mode if entered to perform a DO_LAND_START Landing sequence
         TURTLE =       28,  // Flip over after crash
-
+        VEL_CTRL =      29,  // Custom velocity control mode
         // Mode number 30 reserved for "offboard" for external/lua control.
 
         // Mode number 127 reserved for the "drone show mode" in the Skybrush
@@ -2076,3 +2076,38 @@ private:
 
 };
 #endif
+
+class ModeVelCtrl : public Mode {
+public:
+    // inherit constructor
+    using Mode::Mode;
+    bool init(bool ignore_checks) override;
+    void run() override;
+
+    // Handle position, velocity and acceleration targets
+    bool set_target_position_velocity(const Vector3f& pos_target, 
+                                    const Vector3f& vel_target,
+                                    const Vector3f& accel_target = Vector3f());
+    
+protected:
+    const char *name() const override { return "VELCTRL"; }
+    const char *name4() const override { return "VELC"; }
+
+    bool requires_GPS() const override { return true; }
+    bool has_manual_throttle() const override { return false; }
+    bool allows_arming(bool from_gcs) const override { return true; }
+    bool is_autopilot() const override { return true; }
+
+private:
+    void calculate_velocity_control();
+    void calculate_virtual_control(Quaternion& quat_target, Vector3f& ang_vel_target);
+    
+    Vector3f _pos_target;      // Desired position
+    Vector3f _vel_target;      // Desired velocity  
+    Vector3f _accel_target;    // Desired acceleration
+    bool _pos_vel_targets_set; // Flag indicating if targets have been set
+    
+    // Control gains
+    const float _vel_xy_p_gain = 15.0f;  // P gain for XY velocity control
+    const float _vel_z_p_gain = 7.0f;    // P gain for Z velocity control
+};
