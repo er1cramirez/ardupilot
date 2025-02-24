@@ -100,7 +100,7 @@ public:
         AUTOROTATE =   26,  // Autonomous autorotation
         AUTO_RTL =     27,  // Auto RTL, this is not a true mode, AUTO will report as this mode if entered to perform a DO_LAND_START Landing sequence
         TURTLE =       28,  // Flip over after crash
-        VEL_CTRL =      29,  // Custom velocity control mode
+        LLC =      29,  // Custom velocity control mode
         // Mode number 30 reserved for "offboard" for external/lua control.
 
         // Mode number 127 reserved for the "drone show mode" in the Skybrush
@@ -1661,6 +1661,31 @@ protected:
 
 private:
 
+};
+
+class ModeLLC : public Mode {
+public:
+    ModeLLC(void);
+    // inherit constructor
+    using Mode::Mode;
+    Number mode_number() const override { return Number::LLC; }
+    bool init(bool ignore_checks) override;
+    void run() override;
+
+    bool requires_GPS() const override { return false; }
+    bool has_manual_throttle() const override { return true; }
+    bool allows_arming(AP_Arming::Method method) const override { return true; };
+    bool is_autopilot() const override { return false; }
+    bool allows_save_trim() const override { return true; }
+    bool allows_autotune() const override { return true; }
+    bool allows_flip() const override { return true; }
+
+private:
+    const float HOVER_THROTTLE = 1.5f; // Adjust this based on your vehicle
+
+protected:
+   const char *name() const override { return "LLC"; }
+   const char *name4() const override { return "LLC"; }
 };
 
 #if FRAME_CONFIG == HELI_FRAME
