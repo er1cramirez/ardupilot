@@ -10,11 +10,12 @@
 //     const float HOVER_THROTTLE = 2.5f; // Adjust this based on your vehicle
 // };
 
-// bool ModeQuaternionTest::init(bool ignore_checks)
-// {
-//     // Initialize any mode-specific variables here
-//     return true;
-// }
+bool ModeLLC::init(bool ignore_checks)
+{
+    // Initialize any mode-specific variables here
+    return true;
+}
+
 
 void ModeLLC::run()
 {
@@ -59,28 +60,28 @@ void ModeLLC::run()
     // Set constant throttle for hover
     attitude_control->set_throttle_out(HOVER_THROTTLE, true, g.throttle_filt);
 
-    // Get current attitude for debugging
-    Quaternion current_attitude;
-    copter.ahrs.get_quat_body_to_ned(current_attitude);
+    // // Get current attitude for debugging
+    // Quaternion current_attitude;
+    // copter.ahrs.get_quat_body_to_ned(current_attitude);
 
-    // Log or print error
-    Quaternion attitude_error = current_attitude.inverse() * target_attitude;
-    Vector3f error_angle;
-    attitude_error.to_axis_angle(error_angle);
+    // // Log or print error
+    // Quaternion attitude_error = current_attitude.inverse() * target_attitude;
+    // Vector3f error_angle;
+    // attitude_error.to_axis_angle(error_angle);
 
-    // Get current angular rates
-    Vector3f gyro = copter.ahrs.get_gyro();
+    // // Get current angular rates
+    // Vector3f gyro = copter.ahrs.get_gyro();
 
-    // Log debugging info
-    copter.logger.Write("QUAT", "TimeUS,ErrX,ErrY,ErrZ,GyrX,GyrY,GyrZ",
-                       "sdddEEE",
-                       "F000000",
-                       "Qffffff",
-                       AP_HAL::micros64(),
-                       (double)error_angle.x,
-                       (double)error_angle.y,
-                       (double)error_angle.z,
-                       (double)gyro.x,
-                       (double)gyro.y,
-                       (double)gyro.z);
+    // // Log debugging info
+    // copter.logger.Write("QUAT", "TimeUS,ErrX,ErrY,ErrZ,GyrX,GyrY,GyrZ",
+    //                    "sdddEEE",
+    //                    "F000000",
+    //                    "Qffffff",
+    //                    AP_HAL::micros64(),
+    //                    (double)error_angle.x,
+    //                    (double)error_angle.y,
+    //                    (double)error_angle.z,
+    //                    (double)gyro.x,
+    //                    (double)gyro.y,
+    //                    (double)gyro.z);
 }
