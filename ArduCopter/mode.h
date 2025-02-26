@@ -1684,6 +1684,25 @@ private:
     const float HOVER_THROTTLE = 0.32f; // Adjust this based on your vehicle
     void log_data();
     Quaternion target_attitude;  // Make this a class member so it's accessible in log_data
+    void calculate_virtual_control(const Vector3f& ud, const Vector3f& ud_dot, float psi_d,
+                                 Quaternion& quat_target, Vector3f& ang_vel_target);
+    void calculate_velocity_control(const Vector3f& pos, const Vector3f& vel, 
+                                  const Vector3f& accel, const Vector3f& pos_target,
+                                  Vector3f& u, Vector3f& u_dot);
+
+    // Control gains
+    const float _vel_xy_p_gain = 15.0f;  // P gain for XY velocity control
+    const float _vel_z_p_gain = 7.0f;    // P gain for Z velocity control
+    
+    // Target states
+    Vector3f _pos_target;      // Desired position
+    Vector3f _vel_target;      // Desired velocity  
+    Vector3f _accel_target;    // Desired acceleration
+    
+    // For testing, we'll set a fixed target position
+    const float TEST_TARGET_X = 0.5f;  // meters
+    const float TEST_TARGET_Y = 0.5f;  // meters
+    const float TEST_TARGET_Z = -1.5f; // meters (negative is up in NED)
 
 protected:
    const char *name() const override { return "LLC"; }
