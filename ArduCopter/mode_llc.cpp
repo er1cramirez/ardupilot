@@ -38,54 +38,59 @@ void ModeLLC::run()
     }
 
     switch (motors->get_spool_state()) {
-    case AP_Motors::SpoolState::SHUT_DOWN:
+    case AP_Motors::SpoolState::SHUT_DOWN: {
         // Motors Stopped
         attitude_control->reset_yaw_target_and_rate();
         attitude_control->reset_rate_controller_I_terms();
         pos_control->relax_z_controller(0.0f);
         break;
+    }
 
-    case AP_Motors::SpoolState::GROUND_IDLE:
+    case AP_Motors::SpoolState::GROUND_IDLE: {
         // Landed
         attitude_control->reset_yaw_target_and_rate();
         attitude_control->reset_rate_controller_I_terms_smoothly();
         pos_control->relax_z_controller(0.0f);
         break;
+    }
 
-    case AP_Motors::SpoolState::THROTTLE_UNLIMITED:
+    case AP_Motors::SpoolState::THROTTLE_UNLIMITED: {
         // Get current position and velocity from inertial nav
         Vector3f current_pos = inertial_nav.get_position_neu_cm().tofloat() * 0.01f;  // Convert to meters
         Vector3f current_vel = inertial_nav.get_velocity_neu_cms().tofloat() * 0.01f;
-        Vector3f current_accel = inertial_nav.get_accel_neu().tofloat() * 0.01f;
+        // Vector3f current_accel = inertial_nav.get_accel_neu().tofloat() * 0.01f;
         
         // Set test target position (in meters)
         Vector3f pos_target(TEST_TARGET_X, TEST_TARGET_Y, TEST_TARGET_Z);
         
         // Calculate velocity control
         Vector3f u, u_dot;
-        calculate_velocity_control(current_pos, current_vel, current_accel, pos_target, u, u_dot);
+        calculate_velocity_control(current_pos, current_vel, pos_target, u, u_dot);
         
         // Calculate virtual control
+        Vector3f target_ang_vel;
         calculate_virtual_control(u, u_dot, 0.0f, target_attitude, target_ang_vel);
         
         // Run quaternion controller for attitude
         attitude_control->input_quaternion(target_attitude, target_ang_vel);
         
         // Set position target for Z axis
-        pos_control->set_alt_target_with_slew(TEST_TARGET_Z * -100.0f); // Convert to cm, negative for NED
+        // pos_control->set_alt_target_with_slew(TEST_TARGET_Z * -100.0f); // Convert to cm, negative for NED
         break;
+    }
 
     case AP_Motors::SpoolState::SPOOLING_UP:
-    case AP_Motors::SpoolState::SPOOLING_DOWN:
+    case AP_Motors::SpoolState::SPOOLING_DOWN: {
         // Do nothing
         break;
+    }
     }
 
     // Update the vertical position controller
     pos_control->update_z_controller();
 
     // Add logging for debugging
-    log_data();
+    // log_data();
 }
 
 // Optional: Add logging to help with debugging
@@ -109,44 +114,91 @@ void ModeLLC::log_data()
 
     // Use AP::logger() instead of copter.logger
     AP::logger().Write("QUAT", "TimeUS,ErrX,ErrY,ErrZ,GyrX,GyrY,GyrZ,Alt,TAlt",
-                       "sdddEEEmm",
-                       "F000000--",
-                       "Qffffffff",
+                       "srrrrrrnn",        // s:microseconds, r:radians, n:meters
+                       "F--------",        // F:flight, -:no flags
+                       "Qffffffff",        // Q:uint64_t, f:float
                        AP_HAL::micros64(),
-                       (double)error_angle.x,
-                       (double)error_angle.y,
-                       (double)error_angle.z,
-                       (double)gyro.x,
-                       (double)gyro.y,
-                       (double)gyro.z,
-                       (double)current_alt * 0.01f,  
-                       (double)target_alt * 0.01f);
+                       (float)error_angle.x,
+                       (float)error_angle.y,
+                       (float)error_angle.z,
+                       (float)gyro.x,
+                       (float)gyro.y,
+                       (float)gyro.z,
+                       (float)(current_alt * 0.01f),  
+                       (float)(target_alt * 0.01f));
 }
 
 void ModeLLC::calculate_virtual_control(const Vector3f& ud, const Vector3f& ud_dot, float psi_d,
                                       Quaternion& quat_target, Vector3f& ang_vel_target) 
 {
+    // Safety check - don't process if control vector is too small
+    if (ud.length() < 0.1f) {
+        // Set default attitude (level) if control vector is too small
+        quat_target = Quaternion();  // Default identity quaternion
+        ang_vel_target.zero();
+        
+        // AP::logger().Write("VCTE", "TimeUS,ErrCode",
+        //                   "s-",        // s:microseconds, -:no units
+        //                   "F-",        // F:flight, -:no flags
+        //                   "QB",        // Q:uint64_t, B:int8_t
+        //                   AP_HAL::micros64(),
+        //                   (int8_t)1);  // Error code 1: Control vector too small
+        return;
+    }
+    
     // Normalize ud vector
     Vector3f udg = ud.normalized();
     
+    // Safety check for square root arguments
+    float sqrt_term = -2.0f * udg.z + 2.0f;
+    if (sqrt_term <= 0.0f) {
+        // Set default attitude if math would fail
+        quat_target = Quaternion();
+        ang_vel_target.zero();
+        
+        // AP::logger().Write("VCTE", "TimeUS,ErrCode",
+        //                   "s-",        // s:microseconds, -:no units
+        //                   "F-",        // F:flight, -:no flags
+        //                   "QB",        // Q:uint64_t, B:int8_t
+        //                   AP_HAL::micros64(),
+        //                   (int8_t)2);  // Error code 2: Invalid sqrt argument
+        return;
+    }
+    
     // Calculate quaternion components
-    float qd_0 = 0.5f * sqrtf(-2.0f * udg.z + 2.0f) * cosf(psi_d * 0.5f);
-    float qd_1 = (-udg.x * sinf(psi_d * 0.5f) + udg.y * cosf(psi_d * 0.5f)) / sqrtf(-2.0f * udg.z + 2.0f);
-    float qd_2 = (-udg.x * cosf(psi_d * 0.5f) - udg.y * sinf(psi_d * 0.5f)) / sqrtf(-2.0f * udg.z + 2.0f);
-    float qd_3 = 0.5f * sqrtf(-2.0f * udg.z + 2.0f) * sinf(psi_d * 0.5f);
+    float qd_0 = 0.5f * sqrtf(sqrt_term) * cosf(psi_d * 0.5f);
+    float qd_1 = (-udg.x * sinf(psi_d * 0.5f) + udg.y * cosf(psi_d * 0.5f)) / sqrtf(sqrt_term);
+    float qd_2 = (-udg.x * cosf(psi_d * 0.5f) - udg.y * sinf(psi_d * 0.5f)) / sqrtf(sqrt_term);
+    float qd_3 = 0.5f * sqrtf(sqrt_term) * sinf(psi_d * 0.5f);
     
     quat_target.q1 = qd_0;
     quat_target.q2 = qd_1;
     quat_target.q3 = qd_2;
     quat_target.q4 = qd_3;
-    // q_target normalize
+    
+    // Normalize quaternion
     quat_target.normalize();
-    // For initial testing, set angular velocity to zero
+    
+    // For now, set angular velocity to zero for stability
     ang_vel_target.zero();
+    
+    // Log virtual control info
+    // AP::logger().Write("VCTL", "TimeUS,UdgX,UdgY,UdgZ,Q1,Q2,Q3,Q4",
+    //                   "s-------",     // s:microseconds, -:no units for the rest
+    //                   "F-------",     // F:flight, -:no flags
+    //                   "Qfffffff",     // Q:uint64_t, f:float
+    //                   AP_HAL::micros64(),
+    //                   (float)udg.x,
+    //                   (float)udg.y,
+    //                   (float)udg.z,
+    //                   (float)quat_target.q1,
+    //                   (float)quat_target.q2,
+    //                   (float)quat_target.q3,
+    //                   (float)quat_target.q4);
 }
 
 void ModeLLC::calculate_velocity_control(const Vector3f& pos, const Vector3f& vel, 
-                                       const Vector3f& accel, const Vector3f& pos_target,
+                                       const Vector3f& pos_target,
                                        Vector3f& u, Vector3f& u_dot) 
 {
     // Calculate position error
@@ -156,16 +208,33 @@ void ModeLLC::calculate_velocity_control(const Vector3f& pos, const Vector3f& ve
     Vector3f vel_desired;
     vel_desired.x = pos_error.x * _vel_xy_p_gain;
     vel_desired.y = pos_error.y * _vel_xy_p_gain;
-    vel_desired.z = pos_error.z * _vel_z_p_gain;
+    vel_desired.z = pos_error.z * _vel_z_p_gain; // Enable Z control too
     
     // Calculate velocity error
     Vector3f vel_error = vel_desired - vel;
     
-    // Calculate control output (simplified)
-    const float kv = 15.0f;
-    const float mass = 0.8f;
+    // Calculate control output with reasonable gains and gravity compensation
+    const float kv = 2.0f; // Start with a small but non-zero value
+    const float mass = 1.5f; // Estimate of vehicle mass in kg
     const float gravity = GRAVITY_MSS;
     
-    u = -kv * vel_error + Vector3f(0, 0, mass * gravity);
+    // Control vector with gravity compensation
+    u = vel_error.scale(-kv) + Vector3f(0, 0, mass * gravity);
     u_dot.zero();  // Simplified - no acceleration feedforward
+    
+    // Log control info
+    AP::logger().Write("VLCL", "TimeUS,PErrX,PErrY,PErrZ,VErrX,VErrY,VErrZ,UX,UY,UZ",
+                      "smmmmmmNNN",    // s:microseconds, m:meters, N:newtons
+                      "F---------",    // F:flight, -:no flags
+                      "Qfffffffff",    // Q:uint64_t, f:float
+                      AP_HAL::micros64(),
+                      (float)pos_error.x,
+                      (float)pos_error.y,
+                      (float)pos_error.z,
+                      (float)vel_error.x,
+                      (float)vel_error.y,
+                      (float)vel_error.z,
+                      (float)u.x,
+                      (float)u.y,
+                      (float)u.z);
 }
