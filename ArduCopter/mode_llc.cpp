@@ -207,12 +207,12 @@ void ModeLLC::calculate_velocity_control(const Vector3f& pos, const Vector3f& ve
     
     // PD gains
     // Position gains (stronger in Z)
-    const float Kp_xy = 2.0f;
-    const float Kp_z = 3.0f;
+    const float Kp_xy = 0.0f;
+    const float Kp_z = 0.0f;
     Vector3f Kp(Kp_xy, Kp_xy, Kp_z);
     
     // Velocity gains
-    const float Kd = 2.0f;
+    const float Kd = 0.0f;
     Vector3f Kd_vec(Kd, Kd, Kd);
     
     // Calculate PD control
@@ -227,22 +227,24 @@ void ModeLLC::calculate_velocity_control(const Vector3f& pos, const Vector3f& ve
     Vector3f gravity_comp(0.0f, 0.0f, mass * gravity);
     
     // Final control input
-    u = pd_output + gravity_comp;
+    u = pd_output - gravity_comp;
     u_dot.zero();  // No acceleration feedforward for now
     
     // Log control info
-    AP::logger().Write("VLCL", "TimeUS,PErrX,PErrY,PErrZ,VErrX,VErrY,VErrZ,UX,UY,UZ",
-                      "smmmmmmNNN",    // s:microseconds, m:meters, N:newtons
-                      "F---------",    // F:flight, -:no flags
-                      "Qfffffffff",    // Q:uint64_t, f:float
-                      AP_HAL::micros64(),
-                      (float)pos_error.x,
-                      (float)pos_error.y,
-                      (float)pos_error.z,
-                      (float)vel_error.x,
-                      (float)vel_error.y,
-                      (float)vel_error.z,
-                      (float)u.x,
-                      (float)u.y,
-                      (float)u.z);
+    AP::logger().Write("VLCL",
+                    "TimeUS,PErrX,PErrY,PErrZ,VErrX,VErrY,VErrZ,UX,UY,UZ",
+                        "Qfffffffff", // Units\n 
+                        "F---------", // Multipliers\n 
+                        AP_HAL::micros64(),
+                        (float)pos_error.x,
+                        (float)pos_error.y,
+                        (float)pos_error.z,
+                        (float)vel_error.x,
+                        (float)vel_error.y,
+                        (float)vel_error.z,
+                        (float)u.x,
+                        (float)u.y,
+                        (float)u.z);
+
+
 }
