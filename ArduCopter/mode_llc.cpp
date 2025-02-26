@@ -27,7 +27,7 @@ bool ModeLLC::init(bool ignore_checks)
 void ModeLLC::run()
 {
     // Set desired neutral attitude (null quaternion)
-    Quaternion target_attitude;
+    // Quaternion target_attitude;
     target_attitude.initialise(); // This creates identity quaternion (no rotation)
 
     // Set zero angular velocity
@@ -67,7 +67,7 @@ void ModeLLC::run()
         attitude_control->input_quaternion(target_attitude, target_ang_vel);
         
         // Set position target for Z axis
-        pos_control->set_pos_target_z_cm(target_height_cm);
+        pos_control->set_alt_target_with_slew(target_height_cm);
         break;
 
     case AP_Motors::SpoolState::SPOOLING_UP:
@@ -80,7 +80,7 @@ void ModeLLC::run()
     pos_control->update_z_controller();
 
     // Add logging for debugging
-    log_data();
+    // log_data();
 }
 
 // Optional: Add logging to help with debugging
@@ -88,22 +88,22 @@ void ModeLLC::log_data()
 {
     // Get current attitude
     Quaternion current_attitude;
-    copter.ahrs.get_quat_body_to_ned(current_attitude);
-
+    ahrs.get_quat_body_to_ned(current_attitude);
+    
     // Calculate attitude error
     Quaternion attitude_error = current_attitude.inverse() * target_attitude;
     Vector3f error_angle;
     attitude_error.to_axis_angle(error_angle);
 
     // Get current angular rates
-    Vector3f gyro = copter.ahrs.get_gyro();
+    Vector3f gyro = ahrs.get_gyro_latest();
 
     // Get current altitude and target
     float current_alt = inertial_nav.get_position_z_up_cm();
     float target_alt = pos_control->get_pos_target_z_cm();
 
-    // Log data
-    copter.logger.Write("QUAT", "TimeUS,ErrX,ErrY,ErrZ,GyrX,GyrY,GyrZ,Alt,TAlt",
+    // Use AP::logger() instead of copter.logger
+    AP::logger().Write("QUAT", "TimeUS,ErrX,ErrY,ErrZ,GyrX,GyrY,GyrZ,Alt,TAlt",
                        "sdddEEEmm",
                        "F000000--",
                        "Qffffffff",
@@ -114,6 +114,6 @@ void ModeLLC::log_data()
                        (double)gyro.x,
                        (double)gyro.y,
                        (double)gyro.z,
-                       (double)current_alt * 0.01f,  // Convert to meters for display
-                       (double)target_alt * 0.01f);  // Convert to meters for display
+                       (double)current_alt * 0.01f,  
+                       (double)target_alt * 0.01f);
 }
