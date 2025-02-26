@@ -201,26 +201,34 @@ void ModeLLC::calculate_velocity_control(const Vector3f& pos, const Vector3f& ve
                                        const Vector3f& pos_target,
                                        Vector3f& u, Vector3f& u_dot) 
 {
-    // Calculate position error
+    // Calculate state error vector [pos_error; vel_error]
     Vector3f pos_error = pos_target - pos;
+    Vector3f vel_error = -vel;  // Since desired velocity is [0,0,0]
     
-    // Calculate desired velocity (simplified P controller)
-    Vector3f vel_desired;
-    vel_desired.x = pos_error.x * _vel_xy_p_gain;
-    vel_desired.y = pos_error.y * _vel_xy_p_gain;
-    vel_desired.z = pos_error.z * _vel_z_p_gain; // Enable Z control too
+    // PD gains
+    // Position gains (stronger in Z)
+    const float Kp_xy = 2.0f;
+    const float Kp_z = 3.0f;
+    Vector3f Kp(Kp_xy, Kp_xy, Kp_z);
     
-    // Calculate velocity error
-    Vector3f vel_error = vel_desired - vel;
+    // Velocity gains
+    const float Kd = 2.0f;
+    Vector3f Kd_vec(Kd, Kd, Kd);
     
-    // Calculate control output with reasonable gains and gravity compensation
-    const float kv = 2.0f; // Start with a small but non-zero value
+    // Calculate PD control
+    Vector3f pd_output;
+    pd_output.x = -(Kp.x * pos_error.x + Kd_vec.x * vel_error.x);
+    pd_output.y = -(Kp.y * pos_error.y + Kd_vec.y * vel_error.y);
+    pd_output.z = -(Kp.z * pos_error.z + Kd_vec.z * vel_error.z);
+    
+    // Add gravity compensation
     const float mass = 1.5f; // Estimate of vehicle mass in kg
     const float gravity = GRAVITY_MSS;
+    Vector3f gravity_comp(0.0f, 0.0f, mass * gravity);
     
-    // Control vector with gravity compensation
-    u = vel_error.scale(-kv) + Vector3f(0, 0, mass * gravity);
-    u_dot.zero();  // Simplified - no acceleration feedforward
+    // Final control input
+    u = pd_output + gravity_comp;
+    u_dot.zero();  // No acceleration feedforward for now
     
     // Log control info
     AP::logger().Write("VLCL", "TimeUS,PErrX,PErrY,PErrZ,VErrX,VErrY,VErrZ,UX,UY,UZ",
