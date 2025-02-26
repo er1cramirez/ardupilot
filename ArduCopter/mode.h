@@ -1682,6 +1682,8 @@ public:
 
 private:
     const float HOVER_THROTTLE = 0.32f; // Adjust this based on your vehicle
+    void log_data();
+    Quaternion target_attitude;  // Make this a class member so it's accessible in log_data
 
 protected:
    const char *name() const override { return "LLC"; }
