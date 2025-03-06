@@ -19,20 +19,72 @@ bool ModeLLC::init(bool ignore_checks)
 
 void ModeLLC::run()
 {
+    float x_ref = 1.0f, y_ref = 1.0f, z_ref = 0.5f;
+    // float x_dot_ref = 0.0f, y_dot_ref = 0.0f, z_dot_ref = 0.0f;
+    // float x_ddot_ref = 0.0f, y_ddot_ref = 0.0f, z_ddot_ref = 0.0f;
+    // float x_dddot_ref = 0.0f, y_dddot_ref = 0.0f, z_dddot_ref = 0.0f;
+
+    Vector3f x_d(x_ref, y_ref, -z_ref);
+    Vector3f x_d_dot(0.0f, 0.0f, 0.0f);
+    Vector3f x_d_ddot(0.0f, 0.0f, 0.0f);
+    Vector3f x_d_dddot(0.0f, 0.0f, 0.0f);
+
+    float psi_d = 0.0f;
+    float psi_d_dot = 0.0f;
+
+
     // Set desired neutral attitude (null quaternion)
     Quaternion target_attitude;
     target_attitude.initialise(); // This creates identity quaternion (no rotation)
-
     // Set zero angular velocity
     Vector3f target_ang_vel(0.0f, 0.0f, 0.0f);
+    // thrust
+    // float T = 0.0f;
 
+    // Parameters
+    float mass = 0.05f;
+    float grav = 9.81f;
+    float T = mass*grav;
+    Vector3f e_z(0.0f, 0.0f, 1.0f);
+
+    // Drone data initialization
+    Vector3f x(0.0f, 0.0f, 0.0f);
+    Vector3f x_dot(0.0f, 0.0f, 0.0f);
+    Vector3f x_ddot(0.0f, 0.0f, 0.0f);
+
+    // Control gains
+    Matrix3f kp1(-0.1f, 0.0f, 0.0f,
+                 0.0f, -0.1f, 0.0f,
+                 0.0f, 0.0f, -0.0f);
+
+    Matrix3f kd1(-0.08f, 0.0f, 0.0f,
+                0.0f, -0.08f, 0.0f,
+                0.0f, 0.0f, -0.0f);
+
+    if(ahrs.get_relative_position_NED_home(x) && ahrs.get_velocity_NED(x_dot)) 
+    {   
+        x_ddot = ahrs.get_accel_ef(); // Acceleration in NED inertial frame
+        x_ddot = x_ddot + e_z*grav;
+
+        // Errors
+        Vector3f xe = x - x_d;
+        Vector3f xe_dot = x_dot - x_d_dot;
+        Vector3f xe_ddot = x_ddot - x_d_ddot;
+
+        // Control law
+        Vector3f u_d = kp1 * xe + kd1 * xe_dot - e_z * mass * grav + x_d_ddot * mass;
+        // Vector3f u_d_dot = kp1 * xe_dot + x_d_dddot*mass;// + kd1 * xe_ddot + x_d_dddot * mass;
+        Vector3f u_d_dot = kp1 * xe_dot + kd1 * xe_ddot + x_d_dddot * mass;
+
+        // Calculate virtual control
+        calculate_virtual_control(u_d, u_d_dot, psi_d, T, psi_d_dot, target_attitude, target_ang_vel);
+    }
     // Handle motor spool states
     if (!motors->armed()) {
         motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::SHUT_DOWN);
     } else {
         motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
     }
-
     switch (motors->get_spool_state()) {
     case AP_Motors::SpoolState::SHUT_DOWN:
         // Motors Stopped
@@ -56,32 +108,32 @@ void ModeLLC::run()
         // Do nothing
         break;
     }
-
     // Set constant throttle for hover
     attitude_control->set_throttle_out(HOVER_THROTTLE, true, g.throttle_filt);
+}
 
-    // // Get current attitude for debugging
-    // Quaternion current_attitude;
-    // copter.ahrs.get_quat_body_to_ned(current_attitude);
+void ModeLLC::calculate_virtual_control(const Vector3f& u_d, const Vector3f& u_d_dot, float psi_d,
+    float psi_d_dot, float& T, Quaternion& q_d, Vector3f& omega_d) 
+{
+    // Desired attitude
+    Vector3f u_d_norm = u_d.normalized();
+    Vector3f u_d_dot_norm = u_d_dot / u_d.length() - u_d * (u_d * u_d_dot) / powf(u_d.length(), 3.0f);
+    Quaternion q_dxy(1.0f/2.0f * sqrtf(-2*u_d_norm.z + 2),
+                     u_d_norm.y / sqrtf(-2*u_d_norm.z + 2),
+                     -u_d_norm.x / sqrtf(-2*u_d_norm.z + 2),
+                     0.0f);
 
-    // // Log or print error
-    // Quaternion attitude_error = current_attitude.inverse() * target_attitude;
-    // Vector3f error_angle;
-    // attitude_error.to_axis_angle(error_angle);
+    Quaternion q_dz(cosf(psi_d/2.0f), 
+                         0.0f, 
+                         0.0f, 
+                         sinf(psi_d/2.0f));
 
-    // // Get current angular rates
-    // Vector3f gyro = copter.ahrs.get_gyro();
+    q_d = q_dxy * q_dz;
+    q_d.normalize();
+    omega_d = {-sinf(psi_d)*u_d_dot_norm.x + cosf(psi_d)*u_d_dot_norm.y + u_d_dot_norm.z*(sinf(psi_d)*u_d_norm.x - cosf(psi_d)*u_d_norm.y)/(u_d_norm.z - 1.0f),
+                         -cosf(psi_d)*u_d_dot_norm.x - sinf(psi_d)*u_d_dot_norm.y + u_d_dot_norm.z*(cosf(psi_d)*u_d_norm.x + sinf(psi_d)*u_d_norm.y)/(u_d_norm.z - 1.0f),
+                         psi_d_dot + (u_d_norm.x*u_d_dot_norm.y - u_d_norm.y*u_d_dot_norm.x)/(u_d_norm.z - 1.0f)};
 
-    // // Log debugging info
-    // copter.logger.Write("QUAT", "TimeUS,ErrX,ErrY,ErrZ,GyrX,GyrY,GyrZ",
-    //                    "sdddEEE",
-    //                    "F000000",
-    //                    "Qffffff",
-    //                    AP_HAL::micros64(),
-    //                    (double)error_angle.x,
-    //                    (double)error_angle.y,
-    //                    (double)error_angle.z,
-    //                    (double)gyro.x,
-    //                    (double)gyro.y,
-    //                    (double)gyro.z);
+    // Thrust
+    T = u_d.length(); 
 }

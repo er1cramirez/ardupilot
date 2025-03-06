@@ -1681,7 +1681,10 @@ public:
     bool allows_flip() const override { return true; }
 
 private:
-    const float HOVER_THROTTLE = 0.32f; // Adjust this based on your vehicle
+    const float HOVER_THROTTLE = 0.35f; // Adjust this based on your vehicle
+
+    void calculate_virtual_control(const Vector3f& u_d, const Vector3f& u_d_dot, float psi_d,
+        float psi_d_dot, float& T, Quaternion& q_d, Vector3f& omega_d);
 
 protected:
    const char *name() const override { return "LLC"; }
