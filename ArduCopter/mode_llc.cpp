@@ -12,9 +12,18 @@
 
 bool ModeLLC::init(bool ignore_checks)
 {
-    // Initialize any mode-specific variables here
+    // Initialize position controller for Z axis if not already active
+    if (!pos_control->is_active_z()) {
+        pos_control->init_z_controller();
+    }
+
+    // Set vertical speed and acceleration limits
+    pos_control->set_max_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
+    pos_control->set_correction_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
+
     return true;
 }
+
 
 
 void ModeLLC::run()
@@ -82,6 +91,10 @@ void ModeLLC::run()
     // Handle motor spool states
     if (!motors->armed()) {
         motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::SHUT_DOWN);
+        
+        attitude_control->reset_rate_controller_I_terms();
+        attitude_control->reset_yaw_target_and_rate(false);
+        pos_control->relax_z_controller(0.0f);   // forces throttle output to decay to zero
     } else {
         motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
     }
@@ -90,17 +103,22 @@ void ModeLLC::run()
         // Motors Stopped
         attitude_control->reset_yaw_target_and_rate();
         attitude_control->reset_rate_controller_I_terms();
+        pos_control->relax_z_controller(0.0f);
         break;
 
     case AP_Motors::SpoolState::GROUND_IDLE:
         // Landed
         attitude_control->reset_yaw_target_and_rate();
         attitude_control->reset_rate_controller_I_terms_smoothly();
+
+        pos_control->relax_z_controller(0.0f);
         break;
 
     case AP_Motors::SpoolState::THROTTLE_UNLIMITED:
         // Flying - run quaternion controller
         attitude_control->input_quaternion(target_attitude, target_ang_vel);
+
+        pos_control->set_alt_target_with_slew(100.0f);
         break;
 
     case AP_Motors::SpoolState::SPOOLING_UP:
@@ -109,7 +127,8 @@ void ModeLLC::run()
         break;
     }
     // Set constant throttle for hover
-    attitude_control->set_throttle_out(HOVER_THROTTLE, true, g.throttle_filt);
+    // attitude_control->set_throttle_out(HOVER_THROTTLE, true, g.throttle_filt);
+    pos_control->update_z_controller();
 }
 
 void ModeLLC::calculate_virtual_control(const Vector3f& u_d, const Vector3f& u_d_dot, float psi_d,
@@ -137,3 +156,64 @@ void ModeLLC::calculate_virtual_control(const Vector3f& u_d, const Vector3f& u_d
     // Thrust
     T = u_d.length(); 
 }
+
+
+// void ModeLLC::run()
+// {
+//     // Set desired neutral attitude (null quaternion)
+//     // Quaternion target_attitude;
+//     target_attitude.initialise(); // This creates identity quaternion (no rotation)
+
+//     // Set zero angular velocity
+//     Vector3f target_ang_vel(0.0f, 0.0f, 0.0f);
+
+//     // Handle motor spool states
+//     if (!motors->armed()) {
+//         motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::SHUT_DOWN);
+        
+//         attitude_control->reset_rate_controller_I_terms();
+//         attitude_control->reset_yaw_target_and_rate(false);
+//         pos_control->relax_z_controller(0.0f);   // forces throttle output to decay to zero
+//     } else {
+//         motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
+//     }
+
+//     // Define target height (in cm above home)
+//     const float target_height_cm = 150.0f; // 1.5 meters above home
+
+//     switch (motors->get_spool_state()) {
+//     case AP_Motors::SpoolState::SHUT_DOWN:
+//         // Motors Stopped
+//         attitude_control->reset_yaw_target_and_rate();
+//         attitude_control->reset_rate_controller_I_terms();
+//         pos_control->relax_z_controller(0.0f);
+//         break;
+
+//     case AP_Motors::SpoolState::GROUND_IDLE:
+//         // Landed
+//         attitude_control->reset_yaw_target_and_rate();
+//         attitude_control->reset_rate_controller_I_terms_smoothly();
+//         pos_control->relax_z_controller(0.0f);
+//         break;
+
+//     case AP_Motors::SpoolState::THROTTLE_UNLIMITED:
+//         // Flying - run quaternion controller for attitude
+//         attitude_control->input_quaternion(target_attitude, target_ang_vel);
+        
+//         // Set position target for Z axis
+//         pos_control->set_alt_target_with_slew(target_height_cm);
+//         break;
+
+//     case AP_Motors::SpoolState::SPOOLING_UP:
+//     case AP_Motors::SpoolState::SPOOLING_DOWN:
+//         // Do nothing
+//         break;
+//     }
+
+//     // Update the vertical position controller
+//     pos_control->update_z_controller();
+
+//     // Add logging for debugging
+//     // log_data();
+// }
+
