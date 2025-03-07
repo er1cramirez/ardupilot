@@ -28,7 +28,7 @@ bool ModeLLC::init(bool ignore_checks)
 
 void ModeLLC::run()
 {
-    float x_ref = 1.0f, y_ref = 1.0f, z_ref = 0.5f;
+    float x_ref = -1.0f, y_ref = 1.5f, z_ref = 0.5f;
     // float x_dot_ref = 0.0f, y_dot_ref = 0.0f, z_dot_ref = 0.0f;
     // float x_ddot_ref = 0.0f, y_ddot_ref = 0.0f, z_ddot_ref = 0.0f;
     // float x_dddot_ref = 0.0f, y_dddot_ref = 0.0f, z_dddot_ref = 0.0f;
@@ -80,6 +80,17 @@ void ModeLLC::run()
         Vector3f xe_dot = x_dot - x_d_dot;
         Vector3f xe_ddot = x_ddot - x_d_ddot;
 
+        // Log control info
+        AP::logger().Write("VLCL",
+            "TimeUS,PErrX,PErrY,PErrZ,VErrX,VErrY,VErrZ",
+                "Qffffff",
+                AP_HAL::micros64(),
+                (float)xe.x,
+                (float)xe.y,
+                (float)xe.z,
+                (float)xe_dot.x,
+                (float)xe_dot.y,
+                (float)xe_dot.z);
         // Control law
         Vector3f u_d = kp1 * xe + kd1 * xe_dot - e_z * mass * grav + x_d_ddot * mass;
         // Vector3f u_d_dot = kp1 * xe_dot + x_d_dddot*mass;// + kd1 * xe_ddot + x_d_dddot * mass;
@@ -156,64 +167,4 @@ void ModeLLC::calculate_virtual_control(const Vector3f& u_d, const Vector3f& u_d
     // Thrust
     T = u_d.length(); 
 }
-
-
-// void ModeLLC::run()
-// {
-//     // Set desired neutral attitude (null quaternion)
-//     // Quaternion target_attitude;
-//     target_attitude.initialise(); // This creates identity quaternion (no rotation)
-
-//     // Set zero angular velocity
-//     Vector3f target_ang_vel(0.0f, 0.0f, 0.0f);
-
-//     // Handle motor spool states
-//     if (!motors->armed()) {
-//         motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::SHUT_DOWN);
-        
-//         attitude_control->reset_rate_controller_I_terms();
-//         attitude_control->reset_yaw_target_and_rate(false);
-//         pos_control->relax_z_controller(0.0f);   // forces throttle output to decay to zero
-//     } else {
-//         motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
-//     }
-
-//     // Define target height (in cm above home)
-//     const float target_height_cm = 150.0f; // 1.5 meters above home
-
-//     switch (motors->get_spool_state()) {
-//     case AP_Motors::SpoolState::SHUT_DOWN:
-//         // Motors Stopped
-//         attitude_control->reset_yaw_target_and_rate();
-//         attitude_control->reset_rate_controller_I_terms();
-//         pos_control->relax_z_controller(0.0f);
-//         break;
-
-//     case AP_Motors::SpoolState::GROUND_IDLE:
-//         // Landed
-//         attitude_control->reset_yaw_target_and_rate();
-//         attitude_control->reset_rate_controller_I_terms_smoothly();
-//         pos_control->relax_z_controller(0.0f);
-//         break;
-
-//     case AP_Motors::SpoolState::THROTTLE_UNLIMITED:
-//         // Flying - run quaternion controller for attitude
-//         attitude_control->input_quaternion(target_attitude, target_ang_vel);
-        
-//         // Set position target for Z axis
-//         pos_control->set_alt_target_with_slew(target_height_cm);
-//         break;
-
-//     case AP_Motors::SpoolState::SPOOLING_UP:
-//     case AP_Motors::SpoolState::SPOOLING_DOWN:
-//         // Do nothing
-//         break;
-//     }
-
-//     // Update the vertical position controller
-//     pos_control->update_z_controller();
-
-//     // Add logging for debugging
-//     // log_data();
-// }
 
