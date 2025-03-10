@@ -51,7 +51,7 @@ void ModeLLC::run()
     // float T = 0.0f;
 
     // Parameters
-    float mass = 0.039f;
+    float mass = 0.0385f;
     float grav = 9.81f;
     float T = mass*grav;
     Vector3f e_z(0.0f, 0.0f, 1.0f);
@@ -204,7 +204,7 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     Vector3f T_ddot(0.0f, 0.0f, 0.0f);
 
     // Membership functions
-    float c1 = 1.0f;
+    float c1 = 1.5f;
     float mu_far = tanhf(c1 * d);
     float mu_close = 1.0f / coshf(c1 * d); // sech(x) = 1/cosh(x)
 
@@ -226,13 +226,13 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     float d_t_ddot = -xi_ddot.z;
 
     // Gain parameters
-    float c2_k = 0.1f;
+    float c2_k = 0.4f;
     float c2_T = c2_k * tanhf(c1 * d_t);
     float c2_T_dot = c2_k * (c1 * powf(1.0f / coshf(c1 * d_t), 2.0f) * d_t_dot);
     float c2_T_ddot = c2_k * (c1 * powf(1.0f / coshf(c1 * d_t), 2.0f) * d_t_ddot - 
     2.0f * c1 * c1 * powf(1.0f / coshf(c1 * d_t), 2.0f) * tanhf(c1 * d_t) * d_t_dot * d_t_dot);
 
-    float c2_R = 0.5f;
+    float c2_R = 0.9f;
     float c2_R_dot = 0.0f;
     float c2_R_ddot = 0.0f;
 
@@ -251,12 +251,12 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
                        T * (mu_close_dot * c2_T_dot) + T * (mu_close_ddot * c2_T) + T_dot * (mu_close_dot * c2_T) +
                        T_dot * (mu_close * c2_T_dot) + T_dot * (mu_close_dot * c2_T) + T_ddot * (mu_close * c2_T));
     // Control law
-    float kv = 0.2f;
-    float m = 0.039f;
-    float gr = 9.81f;
+    float kv = 0.21f;
+    float m = 0.0385f;
+    // float gr = 9.81f;
 
     // Calculate control outputs
     Ve = V - Vd;
-    u = (V - Vd) * (-kv) + Vd_dot * m - Vector3f(0.0f, 0.0f, m * gr);
+    u = (V - Vd) * (-kv) + Vd_dot * m - Vector3f(0.0f, 0.0f, motors->get_throttle_hover());
     u_dot = (V_dot - Vd_dot) * (-kv) + Vd_ddot * m;
 }

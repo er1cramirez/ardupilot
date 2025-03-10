@@ -7,6 +7,7 @@
 #include "AC_CustomControl_Backend.h"
 // #include "AC_CustomControl_Empty.h"
 #include "AC_CustomControl_PID.h"
+#include "AC_CustomControl_LLC.h"
 #include <GCS_MAVLink/GCS.h>
 #include <AP_Logger/AP_Logger.h>
 
@@ -15,7 +16,7 @@ const AP_Param::GroupInfo AC_CustomControl::var_info[] = {
     // @Param: _TYPE
     // @DisplayName: Custom control type
     // @Description: Custom control type to be used
-    // @Values: 0:None, 1:Empty, 2:PID
+    // @Values: 0:None, 1:Empty, 2:PID, 3:LLC
     // @RebootRequired: True
     // @User: Advanced
     AP_GROUPINFO_FLAGS("_TYPE", 1, AC_CustomControl, _controller_type, 0, AP_PARAM_FLAG_ENABLE),
@@ -33,6 +34,9 @@ const AP_Param::GroupInfo AC_CustomControl::var_info[] = {
     // parameters for PID controller
     AP_SUBGROUPVARPTR(_backend, "2_", 7, AC_CustomControl, _backend_var_info[1]),
 
+    // parameters for LLC controller
+    AP_SUBGROUPVARPTR(_backend, "3_", 8, AC_CustomControl, _backend_var_info[2]),
+    
     AP_GROUPEND
 };
 
@@ -61,6 +65,11 @@ void AC_CustomControl::init(void)
         case CustomControlType::CONT_PID:
             _backend = NEW_NOTHROW AC_CustomControl_PID(*this, _ahrs, _att_control, _motors, _dt);
             _backend_var_info[get_type()] = AC_CustomControl_PID::var_info;
+            break;
+
+        case CustomControlType::CONT_LLC:
+            _backend = NEW_NOTHROW AC_CustomControl_LLC(*this, _ahrs, _att_control, _motors, _dt);
+            _backend_var_info[get_type()] = AC_CustomControl_LLC::var_info;
             break;
         default:
             return;
