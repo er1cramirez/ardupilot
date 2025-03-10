@@ -1685,6 +1685,11 @@ private:
 
     void calculate_virtual_control(const Vector3f& u_d, const Vector3f& u_d_dot, float psi_d,
         float psi_d_dot, float& T, Quaternion& q_d, Vector3f& omega_d);
+        // Add this to your ModeLLC class declaration
+    void calculate_hlc(const Vector3f& xi_c, const Vector3f& xi, 
+        const Vector3f& xi_dot_c, const Vector3f& xi_dot, 
+        const Vector3f& xi_ddot_c, const Vector3f& xi_ddot,
+        Vector3f& u, Vector3f& u_dot, Vector3f& Ve);
 
 protected:
    const char *name() const override { return "LLC"; }

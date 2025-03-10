@@ -28,7 +28,7 @@ bool ModeLLC::init(bool ignore_checks)
 
 void ModeLLC::run()
 {
-    float x_ref = -1.0f, y_ref = 1.5f, z_ref = 0.5f;
+    float x_ref = 2.5f, y_ref = -2.5f, z_ref = 0.5f;
     // float x_dot_ref = 0.0f, y_dot_ref = 0.0f, z_dot_ref = 0.0f;
     // float x_ddot_ref = 0.0f, y_ddot_ref = 0.0f, z_ddot_ref = 0.0f;
     // float x_dddot_ref = 0.0f, y_dddot_ref = 0.0f, z_dddot_ref = 0.0f;
@@ -36,7 +36,7 @@ void ModeLLC::run()
     Vector3f x_d(x_ref, y_ref, -z_ref);
     Vector3f x_d_dot(0.0f, 0.0f, 0.0f);
     Vector3f x_d_ddot(0.0f, 0.0f, 0.0f);
-    Vector3f x_d_dddot(0.0f, 0.0f, 0.0f);
+    // Vector3f x_d_dddot(0.0f, 0.0f, 0.0f);
 
     float psi_d = 0.0f;
     float psi_d_dot = 0.0f;
@@ -51,7 +51,7 @@ void ModeLLC::run()
     // float T = 0.0f;
 
     // Parameters
-    float mass = 0.05f;
+    float mass = 0.039f;
     float grav = 9.81f;
     float T = mass*grav;
     Vector3f e_z(0.0f, 0.0f, 1.0f);
@@ -64,11 +64,11 @@ void ModeLLC::run()
     // Control gains
     Matrix3f kp1(-0.1f, 0.0f, 0.0f,
                  0.0f, -0.1f, 0.0f,
-                 0.0f, 0.0f, -0.0f);
+                 0.0f, 0.0f, -0.3f);
 
     Matrix3f kd1(-0.08f, 0.0f, 0.0f,
                 0.0f, -0.08f, 0.0f,
-                0.0f, 0.0f, -0.0f);
+                0.0f, 0.0f, -0.1f);
 
     if(ahrs.get_relative_position_NED_home(x) && ahrs.get_velocity_NED(x_dot)) 
     {   
@@ -77,27 +77,35 @@ void ModeLLC::run()
 
         // Errors
         Vector3f xe = x - x_d;
-        Vector3f xe_dot = x_dot - x_d_dot;
-        Vector3f xe_ddot = x_ddot - x_d_ddot;
+        // Vector3f xe_dot = x_dot - x_d_dot;
+
+        Vector3f Ve;
+        // Vector3f xe_ddot = x_ddot - x_d_ddot;
+
+        // HLC
+        Vector3f u_d, u_d_dot;
+        calculate_hlc(x_d, x, x_d_dot, x_dot, x_d_ddot, x_ddot, u_d, u_d_dot, Ve);
+
+        // // Control law
+        // Vector3f u_d = kp1 * xe + kd1 * xe_dot - e_z * mass * grav + x_d_ddot * mass;
+        // // Vector3f u_d_dot = kp1 * xe_dot + x_d_dddot*mass;// + kd1 * xe_ddot + x_d_dddot * mass;
+        // Vector3f u_d_dot = kp1 * xe_dot + kd1 * xe_ddot + x_d_dddot * mass;
+
+        // Calculate virtual control
+        calculate_virtual_control(u_d, u_d_dot, psi_d, T, psi_d_dot, target_attitude, target_ang_vel);
 
         // Log control info
         AP::logger().Write("VLCL",
-            "TimeUS,PErrX,PErrY,PErrZ,VErrX,VErrY,VErrZ",
-                "Qffffff",
+            "TimeUS,PErrX,PErrY,PErrZ,VErrX,VErrY,VErrZ,T",
+                "Qfffffff",
                 AP_HAL::micros64(),
                 (float)xe.x,
                 (float)xe.y,
                 (float)xe.z,
-                (float)xe_dot.x,
-                (float)xe_dot.y,
-                (float)xe_dot.z);
-        // Control law
-        Vector3f u_d = kp1 * xe + kd1 * xe_dot - e_z * mass * grav + x_d_ddot * mass;
-        // Vector3f u_d_dot = kp1 * xe_dot + x_d_dddot*mass;// + kd1 * xe_ddot + x_d_dddot * mass;
-        Vector3f u_d_dot = kp1 * xe_dot + kd1 * xe_ddot + x_d_dddot * mass;
-
-        // Calculate virtual control
-        calculate_virtual_control(u_d, u_d_dot, psi_d, T, psi_d_dot, target_attitude, target_ang_vel);
+                (float)Ve.x,
+                (float)Ve.y,
+                (float)Ve.z,
+                (float)T);
     }
     // Handle motor spool states
     if (!motors->armed()) {
@@ -129,7 +137,7 @@ void ModeLLC::run()
         // Flying - run quaternion controller
         attitude_control->input_quaternion(target_attitude, target_ang_vel);
 
-        pos_control->set_alt_target_with_slew(100.0f);
+        // pos_control->set_alt_target_with_slew(100.0f);
         break;
 
     case AP_Motors::SpoolState::SPOOLING_UP:
@@ -138,8 +146,8 @@ void ModeLLC::run()
         break;
     }
     // Set constant throttle for hover
-    // attitude_control->set_throttle_out(HOVER_THROTTLE, true, g.throttle_filt);
-    pos_control->update_z_controller();
+    attitude_control->set_throttle_out(T, true, g.throttle_filt);
+    // pos_control->update_z_controller();
 }
 
 void ModeLLC::calculate_virtual_control(const Vector3f& u_d, const Vector3f& u_d_dot, float psi_d,
@@ -168,3 +176,87 @@ void ModeLLC::calculate_virtual_control(const Vector3f& u_d, const Vector3f& u_d
     T = u_d.length(); 
 }
 
+
+void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi, 
+    const Vector3f& xi_dot_c, const Vector3f& xi_dot, 
+    const Vector3f& xi_ddot_c, const Vector3f& xi_ddot,
+    Vector3f& u, Vector3f& u_dot, Vector3f& Ve)
+{
+    // Calculate position, velocity and acceleration errors
+    Vector3f dv = xi_c - xi;
+    Vector3f dv_dot = xi_dot_c - xi_dot;
+    Vector3f dv_ddot = xi_ddot_c - xi_ddot;
+
+    Vector3f V = xi_dot;
+    Vector3f V_dot = xi_ddot;
+
+    // Distance and direction calculations
+    float d = dv.length();
+    Vector3f R = dv / d;
+    float d_dot = dv_dot * R; 
+    Vector3f R_dot = (dv_dot * d - dv * d_dot) / (d * d);
+    float d_ddot = dv_ddot * R + dv_dot * R_dot;
+    Vector3f R_ddot = (dv_ddot * d - dv * d_ddot) / (d * d) - ((dv_dot * d - dv * d_dot) * d_dot * 2.0f) / (d * d * d);
+
+    // Define constant vectors
+    Vector3f T(0.0f, 0.0f, 1.0f);
+    Vector3f T_dot(0.0f, 0.0f, 0.0f);
+    Vector3f T_ddot(0.0f, 0.0f, 0.0f);
+
+    // Membership functions
+    float c1 = 1.0f;
+    float mu_far = tanhf(c1 * d);
+    float mu_close = 1.0f / coshf(c1 * d); // sech(x) = 1/cosh(x)
+
+    // First derivatives of membership functions
+    float sech_c1d = 1.0f / coshf(c1 * d);
+    float mu_far_dot = c1 * sech_c1d * sech_c1d * d_dot;
+    float mu_close_dot = -c1 * sech_c1d * tanhf(c1 * d) * d_dot;
+
+    // Second derivatives of membership functions
+    float mu_far_ddot = c1 * sech_c1d * sech_c1d * d_ddot - 
+    2.0f * c1 * c1 * sech_c1d * sech_c1d * tanhf(c1 * d) * d_dot * d_dot;
+    float mu_close_ddot = -c1 * sech_c1d * tanhf(c1 * d) * d_ddot - 
+        c1 * c1 * sech_c1d * (1.0f - 2.0f * tanhf(c1 * d) * tanhf(c1 * d)) * d_dot * d_dot;
+
+    // Height control parameters
+    // float c1_t = 1.0f;
+    float d_t = -xi.z;
+    float d_t_dot = -xi_dot.z;
+    float d_t_ddot = -xi_ddot.z;
+
+    // Gain parameters
+    float c2_k = 0.1f;
+    float c2_T = c2_k * tanhf(c1 * d_t);
+    float c2_T_dot = c2_k * (c1 * powf(1.0f / coshf(c1 * d_t), 2.0f) * d_t_dot);
+    float c2_T_ddot = c2_k * (c1 * powf(1.0f / coshf(c1 * d_t), 2.0f) * d_t_ddot - 
+    2.0f * c1 * c1 * powf(1.0f / coshf(c1 * d_t), 2.0f) * tanhf(c1 * d_t) * d_t_dot * d_t_dot);
+
+    float c2_R = 0.5f;
+    float c2_R_dot = 0.0f;
+    float c2_R_ddot = 0.0f;
+
+    // Desired velocity vector - changed order of operations
+    Vector3f Vd = (R * (mu_far * c2_R) + T * (mu_close * c2_T));
+
+    // First derivative of desired velocity - changed order of operations
+    Vector3f Vd_dot = (R * (mu_far * c2_R_dot) + R * (mu_far_dot * c2_R) + R_dot * (mu_far * c2_R)) + 
+                      (T * (mu_close * c2_T_dot) + T * (mu_close_dot * c2_T) + T_dot * (mu_close * c2_T));
+
+    // Second derivative of desired velocity - changed order of operations
+    Vector3f Vd_ddot = (R * (mu_far * c2_R_ddot) + R * (mu_far_dot * c2_R_dot) + R_dot * (mu_far * c2_R_dot) +
+                       R * (mu_far_dot * c2_R_dot) + R * (mu_far_ddot * c2_R) + R_dot * (mu_far_dot * c2_R) +
+                       R_dot * (mu_far * c2_R_dot) + R_dot * (mu_far_dot * c2_R) + R_ddot * (mu_far * c2_R)) +
+                      (T * (mu_close * c2_T_ddot) + T * (mu_close_dot * c2_T_dot) + T_dot * (mu_close * c2_T_dot) +
+                       T * (mu_close_dot * c2_T_dot) + T * (mu_close_ddot * c2_T) + T_dot * (mu_close_dot * c2_T) +
+                       T_dot * (mu_close * c2_T_dot) + T_dot * (mu_close_dot * c2_T) + T_ddot * (mu_close * c2_T));
+    // Control law
+    float kv = 0.2f;
+    float m = 0.039f;
+    float gr = 9.81f;
+
+    // Calculate control outputs
+    Ve = V - Vd;
+    u = (V - Vd) * (-kv) + Vd_dot * m - Vector3f(0.0f, 0.0f, m * gr);
+    u_dot = (V_dot - Vd_dot) * (-kv) + Vd_ddot * m;
+}
