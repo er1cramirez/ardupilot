@@ -169,9 +169,13 @@ void ModeLLC::run()
 
     case AP_Motors::SpoolState::THROTTLE_UNLIMITED:
         // Flying - run quaternion controller
+        
         attitude_control->input_quaternion(target_attitude, target_ang_vel);
 
         // pos_control->set_alt_target_with_slew(100.0f);
+        if (!motors->limit.throttle_lower) {
+            set_land_complete(false);
+        }
         break;
 
     case AP_Motors::SpoolState::SPOOLING_UP:
