@@ -227,7 +227,7 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     // And the z component of the desired acceleration is the vertical acceleration
     Vector3f dv = xi_c - xi;
     Vector3f dv_dot = xi_dot_c - xi_dot;
-    Vector3f dv_ddot = xi_ddot_c - xi_ddot;
+    // Vector3f dv_ddot = xi_ddot_c - xi_ddot;
 
     Vector3f V = xi_dot;
     Vector3f V_dot = xi_ddot;
@@ -237,13 +237,13 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     Vector3f R = dv / d;
     float d_dot = dv_dot * R; 
     Vector3f R_dot = (dv_dot * d - dv * d_dot) / (d * d);
-    float d_ddot = dv_ddot * R + dv_dot * R_dot;
-    Vector3f R_ddot = (dv_ddot * d - dv * d_ddot) / (d * d) - ((dv_dot * d - dv * d_dot) * d_dot * 2.0f) / (d * d * d);
+    // float d_ddot = dv_ddot * R + dv_dot * R_dot;
+    // Vector3f R_ddot = (dv_ddot * d - dv * d_ddot) / (d * d) - ((dv_dot * d - dv * d_dot) * d_dot * 2.0f) / (d * d * d);
 
     // Define constant vectors
     Vector3f Tv(0.0f, 0.0f, 1.0f);
     Vector3f T_dot(0.0f, 0.0f, 0.0f);
-    Vector3f T_ddot(0.0f, 0.0f, 0.0f);
+    // Vector3f T_ddot(0.0f, 0.0f, 0.0f);
 
     // Membership functions
     float c1 = 1.5f;
@@ -256,28 +256,28 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     float mu_close_dot = -c1 * sech_c1d * tanhf(c1 * d) * d_dot;
 
     // Second derivatives of membership functions
-    float mu_far_ddot = c1 * sech_c1d * sech_c1d * d_ddot - 
-    2.0f * c1 * c1 * sech_c1d * sech_c1d * tanhf(c1 * d) * d_dot * d_dot;
-    float mu_close_ddot = -c1 * sech_c1d * tanhf(c1 * d) * d_ddot - 
-        c1 * c1 * sech_c1d * (1.0f - 2.0f * tanhf(c1 * d) * tanhf(c1 * d)) * d_dot * d_dot;
+    // float mu_far_ddot = c1 * sech_c1d * sech_c1d * d_ddot - 
+    // 2.0f * c1 * c1 * sech_c1d * sech_c1d * tanhf(c1 * d) * d_dot * d_dot;
+    // float mu_close_ddot = -c1 * sech_c1d * tanhf(c1 * d) * d_ddot - 
+    //     c1 * c1 * sech_c1d * (1.0f - 2.0f * tanhf(c1 * d) * tanhf(c1 * d)) * d_dot * d_dot;
 
     // Height control parameters
     // float c1_t = 1.0f;
     //Positive scalar value of current height(tangential distance)
     float d_t = -xi.z;
     float d_t_dot = -xi_dot.z;
-    float d_t_ddot = -xi_ddot.z;
+    // float d_t_ddot = -xi_ddot.z;
 
     // Gain parameters
     float c2_k = 0.1f;
     float c2_T = c2_k * tanhf(c1 * d_t);
     float c2_T_dot = c2_k * (c1 * powf(1.0f / coshf(c1 * d_t), 2.0f) * d_t_dot);
-    float c2_T_ddot = c2_k * (c1 * powf(1.0f / coshf(c1 * d_t), 2.0f) * d_t_ddot - 
-    2.0f * c1 * c1 * powf(1.0f / coshf(c1 * d_t), 2.0f) * tanhf(c1 * d_t) * d_t_dot * d_t_dot);
+    // float c2_T_ddot = c2_k * (c1 * powf(1.0f / coshf(c1 * d_t), 2.0f) * d_t_ddot - 
+    // 2.0f * c1 * c1 * powf(1.0f / coshf(c1 * d_t), 2.0f) * tanhf(c1 * d_t) * d_t_dot * d_t_dot);
 
     float c2_R = 0.7f;
     float c2_R_dot = 0.0f;
-    float c2_R_ddot = 0.0f;
+    // float c2_R_ddot = 0.0f;
 
     // Desired velocity vector - changed order of operations
     Vector3f Vd = (R * (mu_far * c2_R) + Tv * (mu_close * c2_T));
@@ -287,12 +287,12 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
                       (Tv * (mu_close * c2_T_dot) + Tv * (mu_close_dot * c2_T) + T_dot * (mu_close * c2_T));
 
     // Second derivative of desired velocity - changed order of operations
-    Vector3f Vd_ddot = (R * (mu_far * c2_R_ddot) + R * (mu_far_dot * c2_R_dot) + R_dot * (mu_far * c2_R_dot) +
-                       R * (mu_far_dot * c2_R_dot) + R * (mu_far_ddot * c2_R) + R_dot * (mu_far_dot * c2_R) +
-                       R_dot * (mu_far * c2_R_dot) + R_dot * (mu_far_dot * c2_R) + R_ddot * (mu_far * c2_R)) +
-                      (Tv * (mu_close * c2_T_ddot) + Tv * (mu_close_dot * c2_T_dot) + T_dot * (mu_close * c2_T_dot) +
-                       Tv * (mu_close_dot * c2_T_dot) + Tv * (mu_close_ddot * c2_T) + T_dot * (mu_close_dot * c2_T) +
-                       T_dot * (mu_close * c2_T_dot) + T_dot * (mu_close_dot * c2_T) + T_ddot * (mu_close * c2_T));
+    // Vector3f Vd_ddot = (R * (mu_far * c2_R_ddot) + R * (mu_far_dot * c2_R_dot) + R_dot * (mu_far * c2_R_dot) +
+    //                    R * (mu_far_dot * c2_R_dot) + R * (mu_far_ddot * c2_R) + R_dot * (mu_far_dot * c2_R) +
+    //                    R_dot * (mu_far * c2_R_dot) + R_dot * (mu_far_dot * c2_R) + R_ddot * (mu_far * c2_R)) +
+    //                   (Tv * (mu_close * c2_T_ddot) + Tv * (mu_close_dot * c2_T_dot) + T_dot * (mu_close * c2_T_dot) +
+    //                    Tv * (mu_close_dot * c2_T_dot) + Tv * (mu_close_ddot * c2_T) + T_dot * (mu_close_dot * c2_T) +
+    //                    T_dot * (mu_close * c2_T_dot) + T_dot * (mu_close_dot * c2_T) + T_ddot * (mu_close * c2_T));
     // Control law
     float kv = 0.2f;
     float m = 0.035f;
@@ -300,8 +300,8 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
 
     // Calculate control outputs
     Ve = V - Vd;
-    u = (V - Vd) * (-kv) + Vd_dot * m - Vector3f(0.0f, 0.0f, m * gr);
-    u_dot = (V_dot - Vd_dot) * (-kv) + Vd_ddot * m;
+    u = (V - Vd) * (-kv) - Vector3f(0.0f, 0.0f, m * gr);
+    u_dot = (V_dot - Vd_dot) * (-kv);
 
     // Add additional debugging information - calculate and log direction components
     Vector3f direction_component = R * (mu_far * c2_R);
