@@ -1682,7 +1682,8 @@ public:
 
 private:
     const float HOVER_THROTTLE = 0.35f; // Adjust this based on your vehicle
-
+    uint32_t _trajectory_start_ms;
+    void generate_trajectory_reference(float& x_ref, float& y_ref);
     void calculate_virtual_control(const Vector3f& u_d, const Vector3f& u_d_dot, float psi_d,
             float& T, float psi_d_dot, Quaternion& q_d, Vector3f& omega_d);
         // Add this to your ModeLLC class declaration

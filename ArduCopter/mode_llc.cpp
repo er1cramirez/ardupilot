@@ -21,21 +21,82 @@ bool ModeLLC::init(bool ignore_checks)
     pos_control->set_max_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
     pos_control->set_correction_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
 
+    // Initialize trajectory timing
+    _trajectory_start_ms = AP_HAL::millis();
+    
     return true;
 }
 
-
+// Generate time-varying XY reference based on trajectory type
+void ModeLLC::generate_trajectory_reference(float& x_ref, float& y_ref)
+{
+    // Get elapsed time in seconds
+    uint32_t now = AP_HAL::millis();
+    float elapsed_sec = (now - _trajectory_start_ms) / 1000.0f;
+    
+    // Trajectory parameters
+    const float speed = 0.5f;  // m/s
+    
+    // Define trajectory type (can be expanded with more patterns)
+    enum class TrajType {
+        LINEAR_X,      // Linear motion along X axis
+        LINEAR_Y,      // Linear motion along Y axis
+        CIRCLE         // Circular path
+    };
+    
+    // Select trajectory type (can be made configurable)
+    TrajType traj_type = TrajType::CIRCLE;
+    
+    // Starting point for the trajectory
+    const float start_x = 0.0f;
+    const float start_y = 0.0f;
+    
+    // Generate reference based on trajectory type
+    switch (traj_type) {
+        case TrajType::LINEAR_X:
+            x_ref = start_x + speed * elapsed_sec;
+            y_ref = start_y + speed * elapsed_sec;
+            break;
+            
+        case TrajType::LINEAR_Y:
+            x_ref = start_x;
+            y_ref = start_y + speed * elapsed_sec;
+            break;
+            
+        case TrajType::CIRCLE: {
+            // Circular trajectory
+            const float radius = 5.0f;  // meters
+            const float angular_speed = speed / radius;  // rad/s
+            const float angle = angular_speed * elapsed_sec;
+            
+            x_ref = start_x + radius * cosf(angle);
+            y_ref = start_y + radius * sinf(angle);
+            break;
+        }
+    }
+    
+    // // Log trajectory information periodically
+    // static uint32_t last_traj_log_ms = 0;
+    // if (now - last_traj_log_ms > 1000) {
+    //     last_traj_log_ms = now;
+    //     gcs().send_text(MAV_SEVERITY_INFO, 
+    //         "TRAJ: t:%.1fs x:%.2f y:%.2f", 
+    //         (double)elapsed_sec, (double)x_ref, (double)y_ref);
+    // }
+}
 
 void ModeLLC::run()
 {
-    // Test different altitude targets - try making z_ref more positive to go down,
-    // more negative to go up (since we're in NED frame)
-    float x_ref = 4.5f, y_ref = -4.5f; // Increased positive z to go lower
+    // Generate time-varying trajectory references
+    float x_ref, y_ref;
+    generate_trajectory_reference(x_ref, y_ref);
     
     // Add debug flags
-    static bool debug_output = true;
+    static bool debug_output = false;
     static uint32_t last_debug_ms = 0;
     
+    // Test different altitude targets - try making z_ref more positive to go down,
+    // more negative to go up (since we're in NED frame)
     
     // Vector3f x_d_dddot(0.0f, 0.0f, 0.0f);
 
@@ -275,7 +336,7 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     // float c2_T_ddot = c2_k * (c1 * powf(1.0f / coshf(c1 * d_t), 2.0f) * d_t_ddot - 
     // 2.0f * c1 * c1 * powf(1.0f / coshf(c1 * d_t), 2.0f) * tanhf(c1 * d_t) * d_t_dot * d_t_dot);
 
-    float c2_R = 0.7f;
+    float c2_R = 1.1f;
     float c2_R_dot = 0.0f;
     // float c2_R_ddot = 0.0f;
 
@@ -294,7 +355,7 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     //                    Tv * (mu_close_dot * c2_T_dot) + Tv * (mu_close_ddot * c2_T) + T_dot * (mu_close_dot * c2_T) +
     //                    T_dot * (mu_close * c2_T_dot) + T_dot * (mu_close_dot * c2_T) + T_ddot * (mu_close * c2_T));
     // Control law
-    float kv = 0.2f;
+    float kv = 0.3f;
     float m = 0.035f;
     float gr = 9.81f;
 
@@ -303,35 +364,35 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     u = (V - Vd) * (-kv) - Vector3f(0.0f, 0.0f, m * gr);
     u_dot = (V_dot - Vd_dot) * (-kv);
 
-    // Add additional debugging information - calculate and log direction components
-    Vector3f direction_component = R * (mu_far * c2_R);
-    Vector3f height_component = Tv * (mu_close * c2_T);
+    // // Add additional debugging information - calculate and log direction components
+    // Vector3f direction_component = R * (mu_far * c2_R);
+    // Vector3f height_component = Tv * (mu_close * c2_T);
     
-    // Log these components periodically
-    static uint32_t last_debug_hlc_ms = 0;
-    uint32_t now = AP_HAL::millis();
-    if (now - last_debug_hlc_ms > 1000) {
-        last_debug_hlc_ms = now;
-        gcs().send_text(MAV_SEVERITY_INFO, 
-            "HLC: d:%.2f mu_far:%.2f mu_close:%.2f c2T:%.2f", 
-            (double)d, (double)mu_far, (double)mu_close, (double)c2_T);
+    // // Log these components periodically
+    // static uint32_t last_debug_hlc_ms = 0;
+    // uint32_t now = AP_HAL::millis();
+    // if (now - last_debug_hlc_ms > 1000) {
+    //     last_debug_hlc_ms = now;
+    //     gcs().send_text(MAV_SEVERITY_INFO, 
+    //         "HLC: d:%.2f mu_far:%.2f mu_close:%.2f c2T:%.2f", 
+    //         (double)d, (double)mu_far, (double)mu_close, (double)c2_T);
         
-        gcs().send_text(MAV_SEVERITY_INFO, 
-            "DIR: x:%.2f y:%.2f z:%.2f | HT: x:%.2f y:%.2f z:%.2f", 
-            (double)direction_component.x, (double)direction_component.y, (double)direction_component.z,
-            (double)height_component.x, (double)height_component.y, (double)height_component.z);
+    //     gcs().send_text(MAV_SEVERITY_INFO, 
+    //         "DIR: x:%.2f y:%.2f z:%.2f | HT: x:%.2f y:%.2f z:%.2f", 
+    //         (double)direction_component.x, (double)direction_component.y, (double)direction_component.z,
+    //         (double)height_component.x, (double)height_component.y, (double)height_component.z);
             
-        // Add more detailed height control debugging
-        gcs().send_text(MAV_SEVERITY_INFO,
-            "Z_CTRL: z:%.2f d_t:%.2f mu_c*c2T:%.2f T_comp:%.2f", 
-            (double)xi.z, (double)d_t, (double)(mu_close * c2_T), 
-            (double)height_component.z);
+    //     // Add more detailed height control debugging
+    //     gcs().send_text(MAV_SEVERITY_INFO,
+    //         "Z_CTRL: z:%.2f d_t:%.2f mu_c*c2T:%.2f T_comp:%.2f", 
+    //         (double)xi.z, (double)d_t, (double)(mu_close * c2_T), 
+    //         (double)height_component.z);
             
-        // Log velocity and control command
-        gcs().send_text(MAV_SEVERITY_INFO,
-            "VEL: vz:%.2f vz_d:%.2f u_z:%.2f", 
-            (double)V.z, (double)Vd.z, (double)u.z);
-    }
+    //     // Log velocity and control command
+    //     gcs().send_text(MAV_SEVERITY_INFO,
+    //         "VEL: vz:%.2f vz_d:%.2f u_z:%.2f", 
+    //         (double)V.z, (double)Vd.z, (double)u.z);
+    // }
     
     // Create simple test case - try direct control
     // Uncomment this to bypass the complex logic and directly test Z control
