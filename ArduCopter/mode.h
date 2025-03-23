@@ -1683,6 +1683,15 @@ public:
 private:
     const float HOVER_THROTTLE = 0.35f; // Adjust this based on your vehicle
     uint32_t _trajectory_start_ms;
+
+    // 3-STC variables
+    Vector3f x3_state = {0.0f, 0.0f, 0.0f};
+    float k1 = 0.15;
+    float k2 = 0.1;
+    float k3 = 0.0;
+    float dt;
+    uint32_t last_run_ms;
+
     void generate_trajectory_reference(float& x_ref, float& y_ref);
     void calculate_virtual_control(const Vector3f& u_d, const Vector3f& u_d_dot, float psi_d,
             float& T, float psi_d_dot, Quaternion& q_d, Vector3f& omega_d);
@@ -1691,6 +1700,17 @@ private:
         const Vector3f& xi_dot_c, const Vector3f& xi_dot, 
         const Vector3f& xi_ddot_c, const Vector3f& xi_ddot,
         Vector3f& u, Vector3f& u_dot, Vector3f& Ve);
+
+    float sign(float x);
+    void set_3sta_parameters(float new_k1, float new_k2, float new_k3);
+    void reset_3sta(void);
+    Vector3f calculate_phi1(const Vector3f& x1, const Vector3f& x2);
+    Vector3f calculate_phi1_dot(const Vector3f& x1, const Vector3f& x2, 
+        const Vector3f& x1_dot, const Vector3f& x2_dot);
+    void calculate_3sta_control(const Vector3f& v, const Vector3f& v_d,
+        const Vector3f& a, const Vector3f& a_d,
+        const Vector3f& j_d,
+        Vector3f& u, Vector3f& u_dot);
 
 protected:
    const char *name() const override { return "LLC"; }

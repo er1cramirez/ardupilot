@@ -3,6 +3,8 @@
 
 bool ModeLLC::init(bool ignore_checks)
 {
+    set_3sta_parameters(0.6f, 0.06f, 0.0f);
+    reset_3sta();
     // Initialize position controller for Z axis if not already active
     if (!pos_control->is_active_z()) {
         pos_control->init_z_controller();
@@ -13,6 +15,8 @@ bool ModeLLC::init(bool ignore_checks)
 
     // Initialize trajectory timing
     _trajectory_start_ms = AP_HAL::millis();
+    // Initialize last run time
+    last_run_ms = AP_HAL::millis();
     return true;
 }
 
@@ -68,6 +72,10 @@ void ModeLLC::generate_trajectory_reference(float& x_ref, float& y_ref)
 
 void ModeLLC::run()
 {
+    // Calculate delta time since last execution
+    uint32_t now_ms = AP_HAL::millis();
+    dt = (now_ms - last_run_ms) / 1000.0f;  // Convert to seconds
+    last_run_ms = now_ms;
     // Generate time-varying trajectory references
     float x_ref, y_ref;
     generate_trajectory_reference(x_ref, y_ref);
@@ -204,7 +212,7 @@ void ModeLLC::run()
         
         attitude_control->input_quaternion(target_attitude, target_ang_vel);
 
-        // pos_control->set_alt_target_with_slew(100.0f);
+        pos_control->set_alt_target_with_slew(300.0f);
         if (!motors->limit.throttle_lower) {
             set_land_complete(false);
         }
@@ -216,8 +224,8 @@ void ModeLLC::run()
         break;
     }
     // Set constant throttle for hover
-    attitude_control->set_throttle_out(T, true, g.throttle_filt);
-    // pos_control->update_z_controller();
+    // attitude_control->set_throttle_out(0.036*9.81, true, g.throttle_filt);
+    pos_control->update_z_controller();
 }
 
 // Fix function signature to match call site - IMPORTANT parameter order change!
@@ -317,14 +325,140 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     Vector3f Vd_dot = (R * (mu_far * c2_R_dot) + R * (mu_far_dot * c2_R) + R_dot * (mu_far * c2_R)) + 
                       (Tv * (mu_close * c2_T_dot) + Tv * (mu_close_dot * c2_T) + T_dot * (mu_close * c2_T));
 
+    Vector3f j_d = {0.0f, 0.0f, 0.0f}; // Desired jerk
     // Control law
-    float kv = 0.3f;
+    // float kv = 0.3f;
     float m = 0.035f;
     float gr = 9.81f;
 
     // Calculate control outputs
     Ve = V - Vd;
-    u = (V - Vd) * (-kv) - Vector3f(0.0f, 0.0f, m * gr);
-    u_dot = (V_dot - Vd_dot) * (-kv);
+    // u = (V - Vd) * (-kv) - Vector3f(0.0f, 0.0f, m * gr);
+    // u_dot = (V_dot - Vd_dot) * (-kv);
+    // Call the control calculation function
+    calculate_3sta_control(V, Vd, V_dot, Vd_dot, j_d, u, u_dot);
+    // add gravity compensation
+    u.z = m * gr;
+    // set u_dot to zero for testing
+    u_dot.zero();
 }
 
+void ModeLLC::set_3sta_parameters(float new_k1, float new_k2, float new_k3) {
+    k1 = new_k1;
+    k2 = new_k2;
+    k3 = new_k3;
+}
+
+/**
+ * Utility: Sign function
+ */
+float ModeLLC::sign(float x) {
+    return (x > 0.0) ? 1.0 : ((x < 0.0) ? -1.0 : 0.0);
+}
+
+/**
+ * Reset the controller state
+ */
+void ModeLLC::reset_3sta() {
+    x3_state.zero();
+}
+
+/**
+ * Calculate phi1 function for 3-STA
+ * 
+ * @param x1 Velocity error (v - v_d)
+ * @param x2 Acceleration error (a - a_d)
+ * @return phi1 function values (3D vector)
+ */
+Vector3f ModeLLC::calculate_phi1(const Vector3f& x1, const Vector3f& x2) {
+    Vector3f phi1 = {0.0, 0.0, 0.0};
+    
+    for (int i = 0; i < 3; i++) {
+        // Calculate phi1 as per 3-STA definition
+        phi1[i] = x2[i] + k2 * powf(fabsf(x1[i]), 2.0f/3.0f) * sign(x1[i]);
+    }
+    
+    return phi1;
+}
+
+
+/**
+ * Calculate time derivative of phi1 (for control derivative)
+ */
+Vector3f ModeLLC::calculate_phi1_dot(const Vector3f& x1, const Vector3f& x2, 
+    const Vector3f& x1_dot, const Vector3f& x2_dot) {
+    Vector3f phi1_dot = {0.0, 0.0, 0.0};
+
+    for (int i = 0; i < 3; i++) {
+    // Handle potential division by zero
+    double x1_term = 0.0;
+    if (fabsf(x1[i]) > 1e-10) {
+    x1_term = k2 * (2.0/3.0) * powf(fabsf(x1[i]), -1.0/3.0) * sign(x1[i]) * x1_dot[i];
+    }
+
+    phi1_dot[i] = x2_dot[i] + x1_term;
+    }
+
+    return phi1_dot;
+}
+
+/**
+ * Calculate the 3-STA control law for velocity tracking
+ * 
+ * @param v Current velocity [vx,vy,vz]
+ * @param v_d Desired velocity [vx,vy,vz]
+ * @param a Current acceleration [ax,ay,az]
+ * @param a_d Desired acceleration [ax,ay,az]
+ * @param j_d Desired jerk [jx,jy,jz]
+ * @param dt Time step
+ * @param u Output control signal
+ * @param u_dot Output control derivative
+ */
+void ModeLLC::calculate_3sta_control(const Vector3f& v, const Vector3f& v_d,
+    const Vector3f& a, const Vector3f& a_d,
+    const Vector3f& j_d,
+    Vector3f& u, Vector3f& u_dot) {
+
+    // Calculate error states for 3-STA
+    Vector3f x1, x2;
+    for (int i = 0; i < 3; i++) {
+        x1[i] = v[i] - v_d[i];    // Velocity error
+        x2[i] = a[i] - a_d[i];    // Acceleration error
+    }
+
+    // Calculate derivative of errors
+    Vector3f x1_dot = x2;  // Derivative of velocity error is acceleration error
+    Vector3f x2_dot;    // Derivative of acceleration error
+    for (int i = 0; i < 3; i++) {
+        x2_dot[i] = -j_d[i];      // Assuming constant control
+    }
+
+    // Calculate phi1
+    Vector3f phi1 = calculate_phi1(x1, x2);
+
+    // Calculate phi1_dot (needed for u_dot)
+    Vector3f phi1_dot = calculate_phi1_dot(x1, x2, x1_dot, x2_dot);
+
+    // // Resize output vectors
+    // u.resize(3, 0.0);
+    // u_dot.resize(3, 0.0);
+    Vector3f x3_dot = {0.0, 0.0, 0.0};
+
+    for (int i = 0; i < 3; i++) {
+        // Calculate control according to 3-STA equations
+        u[i] = -k1 * powf(fabsf(phi1[i]), 1.0/2.0) * sign(phi1[i]) + x3_state[i];
+
+        // Calculate the derivative of x3 (for integration)
+        x3_dot[i] = -k3 * sign(phi1[i]);
+
+        // Update the integral state
+        x3_state[i] += x3_dot[i] * dt;
+
+        // Calculate control derivative
+        if (fabsf(phi1[i]) < 1e-10) {
+            u_dot[i] = x3_dot[i];  // Handle singularity
+        } else {
+            u_dot[i] = -0.5 * k1 * powf(fabsf(phi1[i]), -1.0/2.0) * sign(phi1[i]) * phi1_dot[i] + x3_dot[i];
+        }
+    }
+}
