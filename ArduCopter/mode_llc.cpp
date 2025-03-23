@@ -1,14 +1,5 @@
 #include "Copter.h"
 
-// class ModeQuaternionTest : public Mode {
-// public:
-//     ModeQuaternionTest(void);
-//     bool init(bool ignore_checks) override;
-//     void run() override;
-
-// private:
-//     const float HOVER_THROTTLE = 2.5f; // Adjust this based on your vehicle
-// };
 
 bool ModeLLC::init(bool ignore_checks)
 {
@@ -16,14 +7,12 @@ bool ModeLLC::init(bool ignore_checks)
     if (!pos_control->is_active_z()) {
         pos_control->init_z_controller();
     }
-
     // Set vertical speed and acceleration limits
     pos_control->set_max_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
     pos_control->set_correction_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
 
     // Initialize trajectory timing
     _trajectory_start_ms = AP_HAL::millis();
-    
     return true;
 }
 
@@ -75,14 +64,6 @@ void ModeLLC::generate_trajectory_reference(float& x_ref, float& y_ref)
         }
     }
     
-    // // Log trajectory information periodically
-    // static uint32_t last_traj_log_ms = 0;
-    // if (now - last_traj_log_ms > 1000) {
-    //     last_traj_log_ms = now;
-    //     gcs().send_text(MAV_SEVERITY_INFO, 
-    //         "TRAJ: t:%.1fs x:%.2f y:%.2f", 
-    //         (double)elapsed_sec, (double)x_ref, (double)y_ref);
-    // }
 }
 
 void ModeLLC::run()
@@ -97,8 +78,6 @@ void ModeLLC::run()
     
     // Test different altitude targets - try making z_ref more positive to go down,
     // more negative to go up (since we're in NED frame)
-    
-    // Vector3f x_d_dddot(0.0f, 0.0f, 0.0f);
 
     float psi_d = 0.0f;
     float psi_d_dot = 0.0f;
@@ -109,13 +88,14 @@ void ModeLLC::run()
     target_attitude.initialise(); // This creates identity quaternion (no rotation)
     // Set zero angular velocity
     Vector3f target_ang_vel(0.0f, 0.0f, 0.0f);
-    // thrust
-    // float T = 0.0f;
+
 
     // Parameters
     float mass = 0.039f;
     float grav = 9.81f;
     float T = mass*grav;
+
+    // inertial frame z-axis
     Vector3f e_z(0.0f, 0.0f, 1.0f);
 
     // Drone data initialization
@@ -123,22 +103,13 @@ void ModeLLC::run()
     Vector3f x_dot(0.0f, 0.0f, 0.0f);
     Vector3f x_ddot(0.0f, 0.0f, 0.0f);
 
-    // Control gains
-    Matrix3f kp1(-0.1f, 0.0f, 0.0f,
-                 0.0f, -0.1f, 0.0f,
-                 0.0f, 0.0f, -0.3f);
-
-    Matrix3f kd1(-0.08f, 0.0f, 0.0f,
-                0.0f, -0.08f, 0.0f,
-                0.0f, 0.0f, -0.1f);
-
+    // Get position, velocity and acceleration data
     if(ahrs.get_relative_position_NED_home(x) && ahrs.get_velocity_NED(x_dot)) 
     {   
         x_ddot = ahrs.get_accel_ef(); // Acceleration in NED inertial frame
         x_ddot = x_ddot + e_z*grav;
 
         
-
         // Desired position
         // Fix: In NED frame, positive z is downward, so we should use positive z_ref directly
         Vector3f x_d(x_ref, y_ref, x.z);
@@ -306,54 +277,46 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     Vector3f T_dot(0.0f, 0.0f, 0.0f);
     // Vector3f T_ddot(0.0f, 0.0f, 0.0f);
 
-    // Membership functions
-    float c1 = 1.5f;
-    float mu_far = tanhf(c1 * d);
-    float mu_close = 1.0f / coshf(c1 * d); // sech(x) = 1/cosh(x)
-
-    // First derivatives of membership functions
-    float sech_c1d = 1.0f / coshf(c1 * d);
-    float mu_far_dot = c1 * sech_c1d * sech_c1d * d_dot;
-    float mu_close_dot = -c1 * sech_c1d * tanhf(c1 * d) * d_dot;
-
-    // Second derivatives of membership functions
-    // float mu_far_ddot = c1 * sech_c1d * sech_c1d * d_ddot - 
-    // 2.0f * c1 * c1 * sech_c1d * sech_c1d * tanhf(c1 * d) * d_dot * d_dot;
-    // float mu_close_ddot = -c1 * sech_c1d * tanhf(c1 * d) * d_ddot - 
-    //     c1 * c1 * sech_c1d * (1.0f - 2.0f * tanhf(c1 * d) * tanhf(c1 * d)) * d_dot * d_dot;
-
-    // Height control parameters
-    // float c1_t = 1.0f;
+    // Parameters for navigation functions (similar to MATLAB)
+    float a = 1.0f;         // Amplitude parameter
+    float b_0 = 1.5f;       // Base slope parameter (equivalent to c1 in original code)
+    float k_b = 0.3f;       // Height sensitivity for b parameter
+    float c = 0.0f;         // Offset parameter
+    
     //Positive scalar value of current height(tangential distance)
-    float d_t = -xi.z;
-    float d_t_dot = -xi_dot.z;
-    // float d_t_ddot = -xi_ddot.z;
-
+    float z = -xi.z;        // Height (positive upward)
+    float z_dot = -xi_dot.z; // Height derivative
+    // float z_ddot = -xi_ddot.z; // Height second derivative
+    
+    // Height-dependent b parameter (similar to MATLAB implementation)
+    float b = b_0 * (1.0f + k_b * expf(-k_b * z));
+    float b_dot = -b_0 * k_b * k_b * expf(-k_b * z) * z_dot;
+    
+    // Membership functions
+    float arg_far = b * (d - c);
+    float mu_far = a * tanhf(arg_far);
+    float mu_close = 1.0f / coshf(b_0 * (d - c)); // Note: using b_0 for mu_close as in MATLAB
+    
+    // First derivatives of membership functions
+    // float sech_arg_far = 1.0f / coshf(arg_far);
+    float mu_far_dot = a * (1.0f - tanhf(arg_far) * tanhf(arg_far)) * (b_dot * (d - c) + b * d_dot);
+    float mu_close_dot = -b_0 * tanhf(b_0 * (d - c)) * (1.0f / coshf(b_0 * (d - c))) * d_dot;
+    
     // Gain parameters
     float c2_k = 0.1f;
-    float c2_T = c2_k * tanhf(c1 * d_t);
-    float c2_T_dot = c2_k * (c1 * powf(1.0f / coshf(c1 * d_t), 2.0f) * d_t_dot);
-    // float c2_T_ddot = c2_k * (c1 * powf(1.0f / coshf(c1 * d_t), 2.0f) * d_t_ddot - 
-    // 2.0f * c1 * c1 * powf(1.0f / coshf(c1 * d_t), 2.0f) * tanhf(c1 * d_t) * d_t_dot * d_t_dot);
-
+    float c2_T = c2_k * tanhf(b_0 * z); // Using b_0 as in the original code
+    float c2_T_dot = c2_k * (b_0 * powf(1.0f / coshf(b_0 * z), 2.0f) * z_dot);
     float c2_R = 1.1f;
     float c2_R_dot = 0.0f;
     // float c2_R_ddot = 0.0f;
 
-    // Desired velocity vector - changed order of operations
+    // Desired velocity vector
     Vector3f Vd = (R * (mu_far * c2_R) + Tv * (mu_close * c2_T));
 
-    // First derivative of desired velocity - changed order of operations
+    // First derivative of desired velocity
     Vector3f Vd_dot = (R * (mu_far * c2_R_dot) + R * (mu_far_dot * c2_R) + R_dot * (mu_far * c2_R)) + 
                       (Tv * (mu_close * c2_T_dot) + Tv * (mu_close_dot * c2_T) + T_dot * (mu_close * c2_T));
 
-    // Second derivative of desired velocity - changed order of operations
-    // Vector3f Vd_ddot = (R * (mu_far * c2_R_ddot) + R * (mu_far_dot * c2_R_dot) + R_dot * (mu_far * c2_R_dot) +
-    //                    R * (mu_far_dot * c2_R_dot) + R * (mu_far_ddot * c2_R) + R_dot * (mu_far_dot * c2_R) +
-    //                    R_dot * (mu_far * c2_R_dot) + R_dot * (mu_far_dot * c2_R) + R_ddot * (mu_far * c2_R)) +
-    //                   (Tv * (mu_close * c2_T_ddot) + Tv * (mu_close_dot * c2_T_dot) + T_dot * (mu_close * c2_T_dot) +
-    //                    Tv * (mu_close_dot * c2_T_dot) + Tv * (mu_close_ddot * c2_T) + T_dot * (mu_close_dot * c2_T) +
-    //                    T_dot * (mu_close * c2_T_dot) + T_dot * (mu_close_dot * c2_T) + T_ddot * (mu_close * c2_T));
     // Control law
     float kv = 0.3f;
     float m = 0.035f;
@@ -363,45 +326,5 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     Ve = V - Vd;
     u = (V - Vd) * (-kv) - Vector3f(0.0f, 0.0f, m * gr);
     u_dot = (V_dot - Vd_dot) * (-kv);
-
-    // // Add additional debugging information - calculate and log direction components
-    // Vector3f direction_component = R * (mu_far * c2_R);
-    // Vector3f height_component = Tv * (mu_close * c2_T);
-    
-    // // Log these components periodically
-    // static uint32_t last_debug_hlc_ms = 0;
-    // uint32_t now = AP_HAL::millis();
-    // if (now - last_debug_hlc_ms > 1000) {
-    //     last_debug_hlc_ms = now;
-    //     gcs().send_text(MAV_SEVERITY_INFO, 
-    //         "HLC: d:%.2f mu_far:%.2f mu_close:%.2f c2T:%.2f", 
-    //         (double)d, (double)mu_far, (double)mu_close, (double)c2_T);
-        
-    //     gcs().send_text(MAV_SEVERITY_INFO, 
-    //         "DIR: x:%.2f y:%.2f z:%.2f | HT: x:%.2f y:%.2f z:%.2f", 
-    //         (double)direction_component.x, (double)direction_component.y, (double)direction_component.z,
-    //         (double)height_component.x, (double)height_component.y, (double)height_component.z);
-            
-    //     // Add more detailed height control debugging
-    //     gcs().send_text(MAV_SEVERITY_INFO,
-    //         "Z_CTRL: z:%.2f d_t:%.2f mu_c*c2T:%.2f T_comp:%.2f", 
-    //         (double)xi.z, (double)d_t, (double)(mu_close * c2_T), 
-    //         (double)height_component.z);
-            
-    //     // Log velocity and control command
-    //     gcs().send_text(MAV_SEVERITY_INFO,
-    //         "VEL: vz:%.2f vz_d:%.2f u_z:%.2f", 
-    //         (double)V.z, (double)Vd.z, (double)u.z);
-    // }
-    
-    // Create simple test case - try direct control
-    // Uncomment this to bypass the complex logic and directly test Z control
-    // if (xi.z > xi_c.z) { // If current Z is greater than target Z (we're higher than we want to be)
-    //     u = Vector3f(0, 0, m*gr + 0.1f); // Add upward force (remember: in NED, positive Z is down)
-    // } else {
-    //     u = Vector3f(0, 0, m*gr - 0.1f); // Add downward force
-    // }
-    // u_dot = Vector3f(0, 0, 0);
-    // Ve = V - Vector3f(0, 0, 0);
-    // return;
 }
+
