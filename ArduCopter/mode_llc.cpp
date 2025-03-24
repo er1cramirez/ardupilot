@@ -3,7 +3,7 @@
 
 bool ModeLLC::init(bool ignore_checks)
 {
-    set_3sta_parameters(0.1f, 0.1f, 0.0f);
+    set_3sta_parameters(0.1f, 0.1f, 0.01f);
     reset_3sta();
     // Initialize position controller for Z axis if not already active
     if (!pos_control->is_active_z()) {
