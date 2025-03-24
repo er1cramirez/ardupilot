@@ -3,7 +3,7 @@
 
 bool ModeLLC::init(bool ignore_checks)
 {
-    set_3sta_parameters(0.6f, 0.06f, 0.0f);
+    set_3sta_parameters(0.1f, 0.1f, 0.0f);
     reset_3sta();
     // Initialize position controller for Z axis if not already active
     if (!pos_control->is_active_z()) {
@@ -20,55 +20,6 @@ bool ModeLLC::init(bool ignore_checks)
     return true;
 }
 
-// Generate time-varying XY reference based on trajectory type
-void ModeLLC::generate_trajectory_reference(float& x_ref, float& y_ref)
-{
-    // Get elapsed time in seconds
-    uint32_t now = AP_HAL::millis();
-    float elapsed_sec = (now - _trajectory_start_ms) / 1000.0f;
-    
-    // Trajectory parameters
-    const float speed = 0.5f;  // m/s
-    
-    // Define trajectory type (can be expanded with more patterns)
-    enum class TrajType {
-        LINEAR_X,      // Linear motion along X axis
-        LINEAR_Y,      // Linear motion along Y axis
-        CIRCLE         // Circular path
-    };
-    
-    // Select trajectory type (can be made configurable)
-    TrajType traj_type = TrajType::CIRCLE;
-    
-    // Starting point for the trajectory
-    const float start_x = 0.0f;
-    const float start_y = 0.0f;
-    
-    // Generate reference based on trajectory type
-    switch (traj_type) {
-        case TrajType::LINEAR_X:
-            x_ref = start_x + speed * elapsed_sec;
-            y_ref = start_y + speed * elapsed_sec;
-            break;
-            
-        case TrajType::LINEAR_Y:
-            x_ref = start_x;
-            y_ref = start_y + speed * elapsed_sec;
-            break;
-            
-        case TrajType::CIRCLE: {
-            // Circular trajectory
-            const float radius = 5.0f;  // meters
-            const float angular_speed = speed / radius;  // rad/s
-            const float angle = angular_speed * elapsed_sec;
-            
-            x_ref = start_x + radius * cosf(angle);
-            y_ref = start_y + radius * sinf(angle);
-            break;
-        }
-    }
-    
-}
 
 void ModeLLC::run()
 {
@@ -152,23 +103,12 @@ void ModeLLC::run()
                 (double)x_dot.z, (double)(x_d_dot.z));
         }
 
-        // Add thrust debugging before virtual control calculation
-        float initial_thrust = T;
-        float u_d_length = u_d.length();
-        
         // Calculate virtual control
         calculate_virtual_control(u_d, u_d_dot, psi_d, T, psi_d_dot, target_attitude, target_ang_vel);
-        
-        // Log thrust changes
-        if (debug_output && now - last_debug_ms < 50) {
-            gcs().send_text(MAV_SEVERITY_INFO, 
-                "THRUST: before:%.2f cmd_len:%.2f after:%.2f", 
-                (double)initial_thrust, (double)u_d_length, (double)T);
-        }
 
         // Log more detailed control info
         AP::logger().Write("VLCL",
-            "TimeUS,PErrX,PErrY,PErrZ,VErrX,VErrY,VErrZ,T,Zpos,Ztgt",
+            "TimeUS,PErrX,PErrY,PErrZ,VErrX,VErrY,VErrZ,ud_x,ud_y,ud_z",
                 "Qfffffffff",
                 AP_HAL::micros64(),
                 (float)xe.x,
@@ -177,9 +117,9 @@ void ModeLLC::run()
                 (float)Ve.x,
                 (float)Ve.y,
                 (float)Ve.z,
-                (float)T,
-                (float)x.z,
-                (float)x_d.z);
+                (float)u_d.x,
+                (float)u_d.y,
+                (float)u_d.z);
     }
     // Handle motor spool states
     if (!motors->armed()) {
@@ -328,8 +268,8 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     Vector3f j_d = {0.0f, 0.0f, 0.0f}; // Desired jerk
     // Control law
     // float kv = 0.3f;
-    float m = 0.035f;
-    float gr = 9.81f;
+    // float m = 0.035f;
+    // float gr = 9.81f;
 
     // Calculate control outputs
     Ve = V - Vd;
@@ -337,8 +277,7 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     // u_dot = (V_dot - Vd_dot) * (-kv);
     // Call the control calculation function
     calculate_3sta_control(V, Vd, V_dot, Vd_dot, j_d, u, u_dot);
-    // add gravity compensation
-    u.z = m * gr;
+    
     // set u_dot to zero for testing
     u_dot.zero();
 }
@@ -446,7 +385,7 @@ void ModeLLC::calculate_3sta_control(const Vector3f& v, const Vector3f& v_d,
 
     for (int i = 0; i < 3; i++) {
         // Calculate control according to 3-STA equations
-        u[i] = -k1 * powf(fabsf(phi1[i]), 1.0/2.0) * sign(phi1[i]) + x3_state[i];
+        u[i] = -k1 * powf(fabsf(phi1[i]), 0.5f) * sign(phi1[i]) + x3_state[i];
 
         // Calculate the derivative of x3 (for integration)
         x3_dot[i] = -k3 * sign(phi1[i]);
@@ -461,4 +400,55 @@ void ModeLLC::calculate_3sta_control(const Vector3f& v, const Vector3f& v_d,
             u_dot[i] = -0.5 * k1 * powf(fabsf(phi1[i]), -1.0/2.0) * sign(phi1[i]) * phi1_dot[i] + x3_dot[i];
         }
     }
+    u[2] = u[2] - 0.035f*9.81f;
+}
+
+// Generate time-varying XY reference based on trajectory type
+void ModeLLC::generate_trajectory_reference(float& x_ref, float& y_ref)
+{
+    // Get elapsed time in seconds
+    uint32_t now = AP_HAL::millis();
+    float elapsed_sec = (now - _trajectory_start_ms) / 1000.0f;
+    
+    // Trajectory parameters
+    const float speed = 0.5f;  // m/s
+    
+    // Define trajectory type (can be expanded with more patterns)
+    enum class TrajType {
+        LINEAR_X,      // Linear motion along X axis
+        LINEAR_Y,      // Linear motion along Y axis
+        CIRCLE         // Circular path
+    };
+    
+    // Select trajectory type (can be made configurable)
+    TrajType traj_type = TrajType::CIRCLE;
+    
+    // Starting point for the trajectory
+    const float start_x = 0.0f;
+    const float start_y = 0.0f;
+    
+    // Generate reference based on trajectory type
+    switch (traj_type) {
+        case TrajType::LINEAR_X:
+            x_ref = start_x + speed * elapsed_sec;
+            y_ref = start_y + speed * elapsed_sec;
+            break;
+            
+        case TrajType::LINEAR_Y:
+            x_ref = start_x;
+            y_ref = start_y + speed * elapsed_sec;
+            break;
+            
+        case TrajType::CIRCLE: {
+            // Circular trajectory
+            const float radius = 5.0f;  // meters
+            const float angular_speed = speed / radius;  // rad/s
+            const float angle = angular_speed * elapsed_sec;
+            
+            x_ref = start_x + radius * cosf(angle);
+            y_ref = start_y + radius * sinf(angle);
+            break;
+        }
+    }
+    
 }
