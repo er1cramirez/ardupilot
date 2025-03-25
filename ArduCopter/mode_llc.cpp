@@ -3,8 +3,8 @@
 
 bool ModeLLC::init(bool ignore_checks)
 {
-    set_3sta_parameters(0.1f, 1.0f, 0.0f);
-    reset_3sta();
+    set_st_parameters(0.1f, 0.01f);
+    reset_st();
     // Initialize position controller for Z axis if not already active
     if (!pos_control->is_active_z()) {
         pos_control->init_z_controller();
@@ -65,6 +65,8 @@ void ModeLLC::run()
     // Get position, velocity and acceleration data
     if(ahrs.get_relative_position_NED_home(x) && ahrs.get_velocity_NED(x_dot)) 
     {   
+        // add an offset to the z
+        x.z = x.z + 0.3f;
         x_ddot = ahrs.get_accel_ef(); // Acceleration in NED inertial frame
         x_ddot = x_ddot + e_z*grav;
 
@@ -105,15 +107,15 @@ void ModeLLC::run()
 
         // Calculate virtual control
         calculate_virtual_control(u_d, u_d_dot, psi_d, T, psi_d_dot, target_attitude, target_ang_vel);
-
+        float d_r = Vector2f(xe.x, xe.y).length();
         // Log more detailed control info
         AP::logger().Write("VLCL",
-            "TimeUS,PErrX,PErrY,PErrZ,VErrX,VErrY,VErrZ,ud_x,ud_y,ud_z",
+            "TimeUS,PErrX,PErrY,d,VErrX,VErrY,VErrZ,ud_x,ud_y,ud_z",
                 "Qfffffffff",
                 AP_HAL::micros64(),
                 (float)xe.x,
                 (float)xe.y,
-                (float)xe.z,
+                (float)d_r,
                 (float)Ve.x,
                 (float)Ve.y,
                 (float)Ve.z,
@@ -152,7 +154,7 @@ void ModeLLC::run()
         
         attitude_control->input_quaternion(target_attitude, target_ang_vel);
 
-        pos_control->set_alt_target_with_slew(300.0f);
+        // pos_control->set_alt_target_with_slew(300.0f);
         if (!motors->limit.throttle_lower) {
             set_land_complete(false);
         }
@@ -164,8 +166,8 @@ void ModeLLC::run()
         break;
     }
     // Set constant throttle for hover
-    // attitude_control->set_throttle_out(0.036*9.81, true, g.throttle_filt);
-    pos_control->update_z_controller();
+    attitude_control->set_throttle_out(T, true, g.throttle_filt);
+    // pos_control->update_z_controller();
 }
 
 // Fix function signature to match call site - IMPORTANT parameter order change!
@@ -206,39 +208,39 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     // And the z component of the desired velocity is the vertical speed
     // And the z component of the desired acceleration is the vertical acceleration
     Vector3f dv = xi_c - xi;
-    Vector3f dv_dot = xi_dot_c - xi_dot;
+    // Vector3f dv_dot = xi_dot_c - xi_dot;
     // Vector3f dv_ddot = xi_ddot_c - xi_ddot;
 
     Vector3f V = xi_dot;
-    Vector3f V_dot = xi_ddot;
+    // Vector3f V_dot = xi_ddot;
 
     // Distance and direction calculations
     float d = dv.length();
     Vector3f R = dv / d;
-    float d_dot = dv_dot * R; 
-    Vector3f R_dot = (dv_dot * d - dv * d_dot) / (d * d);
+    // float d_dot = dv_dot * R; 
+    // Vector3f R_dot = (dv_dot * d - dv * d_dot) / (d * d);
     // float d_ddot = dv_ddot * R + dv_dot * R_dot;
     // Vector3f R_ddot = (dv_ddot * d - dv * d_ddot) / (d * d) - ((dv_dot * d - dv * d_dot) * d_dot * 2.0f) / (d * d * d);
 
     // Define constant vectors
     Vector3f Tv(0.0f, 0.0f, 1.0f);
-    Vector3f T_dot(0.0f, 0.0f, 0.0f);
+    // Vector3f T_dot(0.0f, 0.0f, 0.0f);
     // Vector3f T_ddot(0.0f, 0.0f, 0.0f);
 
     // Parameters for navigation functions (similar to MATLAB)
     float a = 1.0f;         // Amplitude parameter
-    float b_0 = 1.5f;       // Base slope parameter (equivalent to c1 in original code)
+    float b_0 = 1.8f;       // Base slope parameter (equivalent to c1 in original code)
     float k_b = 0.3f;       // Height sensitivity for b parameter
     float c = 0.0f;         // Offset parameter
     
     //Positive scalar value of current height(tangential distance)
     float z = -xi.z;        // Height (positive upward)
-    float z_dot = -xi_dot.z; // Height derivative
+    // float z_dot = -xi_dot.z; // Height derivative
     // float z_ddot = -xi_ddot.z; // Height second derivative
     
     // Height-dependent b parameter (similar to MATLAB implementation)
     float b = b_0 * (1.0f + k_b * expf(-k_b * z));
-    float b_dot = -b_0 * k_b * k_b * expf(-k_b * z) * z_dot;
+    // float b_dot = -b_0 * k_b * k_b * expf(-k_b * z) * z_dot;
     
     // Membership functions
     float arg_far = b * (d - c);
@@ -247,25 +249,25 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     
     // First derivatives of membership functions
     // float sech_arg_far = 1.0f / coshf(arg_far);
-    float mu_far_dot = a * (1.0f - tanhf(arg_far) * tanhf(arg_far)) * (b_dot * (d - c) + b * d_dot);
-    float mu_close_dot = -b_0 * tanhf(b_0 * (d - c)) * (1.0f / coshf(b_0 * (d - c))) * d_dot;
+    // float mu_far_dot = a * (1.0f - tanhf(arg_far) * tanhf(arg_far)) * (b_dot * (d - c) + b * d_dot);
+    // float mu_close_dot = -b_0 * tanhf(b_0 * (d - c)) * (1.0f / coshf(b_0 * (d - c))) * d_dot;
     
     // Gain parameters
     float c2_k = 0.1f;
-    float c2_T = c2_k * tanhf(b_0 * z); // Using b_0 as in the original code
-    float c2_T_dot = c2_k * (b_0 * powf(1.0f / coshf(b_0 * z), 2.0f) * z_dot);
+    float c2_T = c2_k * tanhf(b * z); // Using b_0 as in the original code
+    // float c2_T_dot = c2_k * (b_0 * powf(1.0f / coshf(b_0 * z), 2.0f) * z_dot);
     float c2_R = 1.1f;
-    float c2_R_dot = 0.0f;
+    // float c2_R_dot = 0.0f;
     // float c2_R_ddot = 0.0f;
 
     // Desired velocity vector
     Vector3f Vd = (R * (mu_far * c2_R) + Tv * (mu_close * c2_T));
 
-    // First derivative of desired velocity
-    Vector3f Vd_dot = (R * (mu_far * c2_R_dot) + R * (mu_far_dot * c2_R) + R_dot * (mu_far * c2_R)) + 
-                      (Tv * (mu_close * c2_T_dot) + Tv * (mu_close_dot * c2_T) + T_dot * (mu_close * c2_T));
+    // // First derivative of desired velocity
+    // Vector3f Vd_dot = (R * (mu_far * c2_R_dot) + R * (mu_far_dot * c2_R) + R_dot * (mu_far * c2_R)) + 
+    //                   (Tv * (mu_close * c2_T_dot) + Tv * (mu_close_dot * c2_T) + T_dot * (mu_close * c2_T));
 
-    Vector3f j_d = {0.0f, 0.0f, 0.0f}; // Desired jerk
+    // Vector3f j_d = {0.0f, 0.0f, 0.0f}; // Desired jerk
     // Control law
     // float kv = 0.3f;
     // float m = 0.035f;
@@ -276,16 +278,15 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     // u = (V - Vd) * (-kv) - Vector3f(0.0f, 0.0f, m * gr);
     // u_dot = (V_dot - Vd_dot) * (-kv);
     // Call the control calculation function
-    calculate_3sta_control(V, Vd, V_dot, Vd_dot, j_d, u, u_dot);
+    calculate_st_control(V, Vd, u, u_dot);
     
     // set u_dot to zero for testing
     u_dot.zero();
 }
 
-void ModeLLC::set_3sta_parameters(float new_k1, float new_k2, float new_k3) {
+void ModeLLC::set_st_parameters(float new_k1, float new_k2) {
     k1 = new_k1;
     k2 = new_k2;
-    k3 = new_k3;
 }
 
 /**
@@ -298,48 +299,11 @@ float ModeLLC::sign(float x) {
 /**
  * Reset the controller state
  */
-void ModeLLC::reset_3sta() {
-    x3_state.zero();
-}
-
-/**
- * Calculate phi1 function for 3-STA
- * 
- * @param x1 Velocity error (v - v_d)
- * @param x2 Acceleration error (a - a_d)
- * @return phi1 function values (3D vector)
- */
-Vector3f ModeLLC::calculate_phi1(const Vector3f& x1, const Vector3f& x2) {
-    Vector3f phi1 = {0.0, 0.0, 0.0};
-    
-    for (int i = 0; i < 3; i++) {
-        // Calculate phi1 as per 3-STA definition
-        phi1[i] = k2 * x1[i];
-    }
-    
-    return phi1;
+void ModeLLC::reset_st() {
+    x2_state.zero();
 }
 
 
-/**
- * Calculate time derivative of phi1 (for control derivative)
- */
-Vector3f ModeLLC::calculate_phi1_dot(const Vector3f& x1, const Vector3f& x2, 
-    const Vector3f& x1_dot, const Vector3f& x2_dot) {
-    Vector3f phi1_dot = {0.0, 0.0, 0.0};
-
-    for (int i = 0; i < 3; i++) {
-    // Handle potential division by zero
-    double x1_term = 0.0;
-    if (fabsf(x1[i]) > 1e-10) {
-    x1_term = k2 * (2.0/3.0) * powf(fabsf(x1[i]), -1.0/3.0) * sign(x1[i]) * x1_dot[i];
-    }
-
-    phi1_dot[i] = x2_dot[i] + x1_term;
-    }
-
-    return phi1_dot;
-}
 
 /**
  * Calculate the 3-STA control law for velocity tracking
@@ -353,54 +317,36 @@ Vector3f ModeLLC::calculate_phi1_dot(const Vector3f& x1, const Vector3f& x2,
  * @param u Output control signal
  * @param u_dot Output control derivative
  */
-void ModeLLC::calculate_3sta_control(const Vector3f& v, const Vector3f& v_d,
-    const Vector3f& a, const Vector3f& a_d,
-    const Vector3f& j_d,
+void ModeLLC::calculate_st_control(const Vector3f& v, const Vector3f& v_d,
     Vector3f& u, Vector3f& u_dot) {
 
     // Calculate error states for 3-STA
-    Vector3f x1, x2;
+    Vector3f x1;
     for (int i = 0; i < 3; i++) {
         x1[i] = v[i] - v_d[i];    // Velocity error
-        x2[i] = a[i] - a_d[i];    // Acceleration error
     }
 
-    // Calculate derivative of errors
-    Vector3f x1_dot = x2;  // Derivative of velocity error is acceleration error
-    Vector3f x2_dot;    // Derivative of acceleration error
-    for (int i = 0; i < 3; i++) {
-        x2_dot[i] = -j_d[i];      // Assuming constant control
-    }
+    //Sliding surface = velocity error
+    Vector3f phi = x1;
 
-    // Calculate phi1
-    Vector3f phi1 = calculate_phi1(x1, x2);
+    Vector3f x2_dot;
 
-    // Calculate phi1_dot (needed for u_dot)
-    Vector3f phi1_dot = calculate_phi1_dot(x1, x2, x1_dot, x2_dot);
-
-    // // Resize output vectors
-    // u.resize(3, 0.0);
-    // u_dot.resize(3, 0.0);
-    Vector3f x3_dot = {0.0, 0.0, 0.0};
-
+    // u = -k1|s|^(1/2)sign(s) + u1
+    // u1_dot = -k2·sign(s)
     for (int i = 0; i < 3; i++) {
         // Calculate control according to 3-STA equations
-        u[i] = -k1 * powf(fabsf(phi1[i]), 0.5f) * sign(phi1[i]) + x3_state[i];
+        u[i] = -k1 * powf(fabsf(phi[i]), 0.5f) * sign(phi[i]) + x2_state[i];
 
         // Calculate the derivative of x3 (for integration)
-        x3_dot[i] = -k3 * sign(phi1[i]);
+        x2_dot[i] = -k2 * sign(phi[i]);
 
         // Update the integral state
-        x3_state[i] += x3_dot[i] * dt;
+        x2_state[i] += x2_dot[i] * dt;
 
-        // Calculate control derivative
-        if (fabsf(phi1[i]) < 1e-10) {
-            u_dot[i] = x3_dot[i];  // Handle singularity
-        } else {
-            u_dot[i] = -0.5 * k1 * powf(fabsf(phi1[i]), -1.0/2.0) * sign(phi1[i]) * phi1_dot[i] + x3_dot[i];
-        }
     }
     u[2] = u[2] - 0.035f*9.81f;
+    // Set the control derivative to zero
+    u_dot.zero();
 }
 
 // Generate time-varying XY reference based on trajectory type
@@ -411,7 +357,7 @@ void ModeLLC::generate_trajectory_reference(float& x_ref, float& y_ref)
     float elapsed_sec = (now - _trajectory_start_ms) / 1000.0f;
     
     // Trajectory parameters
-    const float speed = 0.5f;  // m/s
+    const float speed = 1.0f;  // m/s
     
     // Define trajectory type (can be expanded with more patterns)
     enum class TrajType {
