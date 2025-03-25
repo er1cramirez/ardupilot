@@ -3,7 +3,7 @@
 
 bool ModeLLC::init(bool ignore_checks)
 {
-    set_3sta_parameters(0.1f, 0.1f, 0.01f);
+    set_3sta_parameters(0.1f, 1.0f, 0.0f);
     reset_3sta();
     // Initialize position controller for Z axis if not already active
     if (!pos_control->is_active_z()) {
@@ -314,7 +314,7 @@ Vector3f ModeLLC::calculate_phi1(const Vector3f& x1, const Vector3f& x2) {
     
     for (int i = 0; i < 3; i++) {
         // Calculate phi1 as per 3-STA definition
-        phi1[i] = x2[i] + k2 * powf(fabsf(x1[i]), 2.0f/3.0f) * sign(x1[i]);
+        phi1[i] = k2 * x1[i];
     }
     
     return phi1;
