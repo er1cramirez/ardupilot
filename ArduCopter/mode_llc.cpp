@@ -65,6 +65,8 @@ void ModeLLC::run()
     // Get position, velocity and acceleration data
     if(ahrs.get_relative_position_NED_home(x) && ahrs.get_velocity_NED(x_dot)) 
     {   
+        float z_offset = 0.3f; // Offset for z position
+        x.z = x.z + z_offset; // Add offset to z position
         x_ddot = ahrs.get_accel_ef(); // Acceleration in NED inertial frame
         x_ddot = x_ddot + e_z*grav;
 
@@ -152,7 +154,7 @@ void ModeLLC::run()
         
         attitude_control->input_quaternion(target_attitude, target_ang_vel);
 
-        pos_control->set_alt_target_with_slew(300.0f);
+        // pos_control->set_alt_target_with_slew(300.0f);
         if (!motors->limit.throttle_lower) {
             set_land_complete(false);
         }
@@ -165,7 +167,7 @@ void ModeLLC::run()
     }
     // Set constant throttle for hover
     // attitude_control->set_throttle_out(0.036*9.81, true, g.throttle_filt);
-    pos_control->update_z_controller();
+    // pos_control->update_z_controller();
 }
 
 // Fix function signature to match call site - IMPORTANT parameter order change!
@@ -279,7 +281,7 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     calculate_3sta_control(V, Vd, V_dot, Vd_dot, j_d, u, u_dot);
     
     // set u_dot to zero for testing
-    u_dot.zero();
+    // u_dot.zero();
 }
 
 void ModeLLC::set_3sta_parameters(float new_k1, float new_k2, float new_k3) {
@@ -366,17 +368,17 @@ void ModeLLC::calculate_3sta_control(const Vector3f& v, const Vector3f& v_d,
     }
 
     // Calculate derivative of errors
-    Vector3f x1_dot = x2;  // Derivative of velocity error is acceleration error
-    Vector3f x2_dot;    // Derivative of acceleration error
-    for (int i = 0; i < 3; i++) {
-        x2_dot[i] = -j_d[i];      // Assuming constant control
-    }
+    // Vector3f x1_dot = x2;  // Derivative of velocity error is acceleration error
+    // Vector3f x2_dot;    // Derivative of acceleration error
+    // for (int i = 0; i < 3; i++) {
+    //     x2_dot[i] = -j_d[i];      // Assuming constant control
+    // }
 
     // Calculate phi1
     Vector3f phi1 = calculate_phi1(x1, x2);
 
     // Calculate phi1_dot (needed for u_dot)
-    Vector3f phi1_dot = calculate_phi1_dot(x1, x2, x1_dot, x2_dot);
+    // Vector3f phi1_dot = calculate_phi1_dot(x1, x2, x1_dot, x2_dot);
 
     // // Resize output vectors
     // u.resize(3, 0.0);
@@ -384,8 +386,8 @@ void ModeLLC::calculate_3sta_control(const Vector3f& v, const Vector3f& v_d,
     Vector3f x3_dot = {0.0, 0.0, 0.0};
 
     for (int i = 0; i < 3; i++) {
-        // Calculate control according to 3-STA equations
-        u[i] = -k1 * powf(fabsf(phi1[i]), 0.5f) * sign(phi1[i]) + x3_state[i];
+        // Calculate control derivate according to 3-STA equations
+        u_dot[i] = -k1 * powf(fabsf(phi1[i]), 0.5f) * sign(phi1[i]) + x3_state[i];
 
         // Calculate the derivative of x3 (for integration)
         x3_dot[i] = -k3 * sign(phi1[i]);
@@ -393,12 +395,8 @@ void ModeLLC::calculate_3sta_control(const Vector3f& v, const Vector3f& v_d,
         // Update the integral state
         x3_state[i] += x3_dot[i] * dt;
 
-        // Calculate control derivative
-        if (fabsf(phi1[i]) < 1e-10) {
-            u_dot[i] = x3_dot[i];  // Handle singularity
-        } else {
-            u_dot[i] = -0.5 * k1 * powf(fabsf(phi1[i]), -1.0/2.0) * sign(phi1[i]) * phi1_dot[i] + x3_dot[i];
-        }
+        // Calculate the control signal
+        u[i] += u_dot[i] * dt;
     }
     u[2] = u[2] - 0.035f*9.81f;
 }
