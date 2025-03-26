@@ -293,7 +293,8 @@ void ModeLLC::set_st_parameters(float new_k1, float new_k2) {
  * Utility: Sign function
  */
 float ModeLLC::sign(float x) {
-    return (x > 0.0) ? 1.0 : ((x < 0.0) ? -1.0 : 0.0);
+    float beta = 0.0f;
+    return tanhf(beta * x);
 }
 
 /**
@@ -342,6 +343,7 @@ void ModeLLC::calculate_st_control(const Vector3f& v, const Vector3f& v_d,
 
         // Update the integral state
         x2_state[i] += x2_dot[i] * dt;
+        // u_dot[i] = -k1*(1/2)*powf(fabsf(phi),0.5)*s_dot*sign(phi) - k1·|s|^(1/2)·α·sech^2(αs)·s_dot - k2·tanh(βs)
 
     }
     u[2] = u[2] - 0.035f*9.81f;
