@@ -166,7 +166,7 @@ void ModeLLC::run()
         break;
     }
     // Set constant throttle for hover
-    // attitude_control->set_throttle_out(0.036*9.81, true, g.throttle_filt);
+    attitude_control->set_throttle_out(T, true, g.throttle_filt);
     // pos_control->update_z_controller();
 }
 
