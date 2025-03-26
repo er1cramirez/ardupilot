@@ -65,7 +65,7 @@ void ModeLLC::run()
     // Get position, velocity and acceleration data
     if(ahrs.get_relative_position_NED_home(x) && ahrs.get_velocity_NED(x_dot)) 
     {   
-        float z_offset = 0.3f; // Offset for z position
+        float z_offset = -0.3f; // Offset for z position
         x.z = x.z + z_offset; // Add offset to z position
         x_ddot = ahrs.get_accel_ef(); // Acceleration in NED inertial frame
         x_ddot = x_ddot + e_z*grav;
