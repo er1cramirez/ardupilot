@@ -3,7 +3,10 @@
 
 bool ModeLLC::init(bool ignore_checks)
 {
-    set_3sta_parameters(0.1f, 1.0f, 0.0f);
+    // Set different gains for each axis (x, y, z)
+    set_3sta_parameters(Vector3f(0.35f, 0.35f, 0.45f),  // k1: higher gain for z-axis
+                       Vector3f(0.4f, 0.4f, 0.8f),      // k2: higher gain for z-axis
+                       Vector3f(0.05f, 0.05f, 0.08f));  // k3: higher gain for z-axis
     reset_3sta();
     // Initialize position controller for Z axis if not already active
     if (!pos_control->is_active_z()) {
@@ -65,7 +68,7 @@ void ModeLLC::run()
     // Get position, velocity and acceleration data
     if(ahrs.get_relative_position_NED_home(x) && ahrs.get_velocity_NED(x_dot)) 
     {   
-        float z_offset = -0.3f; // Offset for z position
+        float z_offset = 0.3f; // Offset for z position
         x.z = x.z + z_offset; // Add offset to z position
         x_ddot = ahrs.get_accel_ef(); // Acceleration in NED inertial frame
         x_ddot = x_ddot + e_z*grav;
@@ -109,13 +112,14 @@ void ModeLLC::run()
         calculate_virtual_control(u_d, u_d_dot, psi_d, T, psi_d_dot, target_attitude, target_ang_vel);
 
         // Log more detailed control info
+        float d_r = Vector2f(xe.x, xe.y).length();
         AP::logger().Write("VLCL",
-            "TimeUS,PErrX,PErrY,PErrZ,VErrX,VErrY,VErrZ,ud_x,ud_y,ud_z",
+            "TimeUS,PErrX,PErrY,d_r,VErrX,VErrY,VErrZ,ud_x,ud_y,ud_z",
                 "Qfffffffff",
                 AP_HAL::micros64(),
                 (float)xe.x,
                 (float)xe.y,
-                (float)xe.z,
+                (float)d_r,
                 (float)Ve.x,
                 (float)Ve.y,
                 (float)Ve.z,
@@ -154,7 +158,7 @@ void ModeLLC::run()
         
         attitude_control->input_quaternion(target_attitude, target_ang_vel);
 
-        // pos_control->set_alt_target_with_slew(300.0f);
+        // pos_control->set_alt_target_with_slew(70.0f);
         if (!motors->limit.throttle_lower) {
             set_land_complete(false);
         }
@@ -277,6 +281,8 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     Ve = V - Vd;
     // u = (V - Vd) * (-kv) - Vector3f(0.0f, 0.0f, m * gr);
     // u_dot = (V_dot - Vd_dot) * (-kv);
+    // Initialize u.z
+    u.z = - 0.035f*9.81f;
     // Call the control calculation function
     calculate_3sta_control(V, Vd, V_dot, Vd_dot, j_d, u, u_dot);
     
@@ -284,7 +290,7 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     // u_dot.zero();
 }
 
-void ModeLLC::set_3sta_parameters(float new_k1, float new_k2, float new_k3) {
+void ModeLLC::set_3sta_parameters(const Vector3f& new_k1, const Vector3f& new_k2, const Vector3f& new_k3) {
     k1 = new_k1;
     k2 = new_k2;
     k3 = new_k3;
@@ -315,8 +321,8 @@ Vector3f ModeLLC::calculate_phi1(const Vector3f& x1, const Vector3f& x2) {
     Vector3f phi1 = {0.0, 0.0, 0.0};
     
     for (int i = 0; i < 3; i++) {
-        // Calculate phi1 as per 3-STA definition
-        phi1[i] = k2 * x1[i];
+        // Calculate phi1 as per 3-STA definition - now using axis-specific k2 gains
+        phi1[i] = x2[i] + (k2[i] * x1[i]);
     }
     
     return phi1;
@@ -331,10 +337,10 @@ Vector3f ModeLLC::calculate_phi1_dot(const Vector3f& x1, const Vector3f& x2,
     Vector3f phi1_dot = {0.0, 0.0, 0.0};
 
     for (int i = 0; i < 3; i++) {
-    // Handle potential division by zero
+    // Handle potential division by zero - now using axis-specific k2 gains
     double x1_term = 0.0;
     if (fabsf(x1[i]) > 1e-10) {
-    x1_term = k2 * (2.0/3.0) * powf(fabsf(x1[i]), -1.0/3.0) * sign(x1[i]) * x1_dot[i];
+    x1_term = k2[i] * (2.0/3.0) * powf(fabsf(x1[i]), -1.0/3.0) * sign(x1[i]) * x1_dot[i];
     }
 
     phi1_dot[i] = x2_dot[i] + x1_term;
@@ -386,11 +392,11 @@ void ModeLLC::calculate_3sta_control(const Vector3f& v, const Vector3f& v_d,
     Vector3f x3_dot = {0.0, 0.0, 0.0};
 
     for (int i = 0; i < 3; i++) {
-        // Calculate control derivate according to 3-STA equations
-        u_dot[i] = -k1 * powf(fabsf(phi1[i]), 0.5f) * sign(phi1[i]) + x3_state[i];
+        // Calculate control derivate according to 3-STA equations - now using axis-specific gains
+        u_dot[i] = -k1[i] * powf(fabsf(phi1[i]), 0.5f) * sign(phi1[i]) + x3_state[i];
 
-        // Calculate the derivative of x3 (for integration)
-        x3_dot[i] = -k3 * sign(phi1[i]);
+        // Calculate the derivative of x3 (for integration) - now using axis-specific gains
+        x3_dot[i] = -k3[i] * sign(phi1[i]);
 
         // Update the integral state
         x3_state[i] += x3_dot[i] * dt;
@@ -398,7 +404,8 @@ void ModeLLC::calculate_3sta_control(const Vector3f& v, const Vector3f& v_d,
         // Calculate the control signal
         u[i] += u_dot[i] * dt;
     }
-    u[2] = u[2] - 0.035f*9.81f;
+    
+    // u[2] = u[2] - 0.035f*9.81f;
 }
 
 // Generate time-varying XY reference based on trajectory type

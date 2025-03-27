@@ -1684,25 +1684,25 @@ private:
     const float HOVER_THROTTLE = 0.35f; // Adjust this based on your vehicle
     uint32_t _trajectory_start_ms;
 
-    // 3-STC variables
+    // 3-STC variables with axis-specific gains
     Vector3f x3_state = {0.0f, 0.0f, 0.0f};
-    float k1 = 0.15;
-    float k2 = 0.1;
-    float k3 = 0.0;
+    Vector3f k1 = {0.15f, 0.15f, 0.15f};  // Changed from float to Vector3f
+    Vector3f k2 = {0.1f, 0.1f, 0.1f};     // Changed from float to Vector3f
+    Vector3f k3 = {0.0f, 0.0f, 0.0f};     // Changed from float to Vector3f
     float dt;
     uint32_t last_run_ms;
 
     void generate_trajectory_reference(float& x_ref, float& y_ref);
     void calculate_virtual_control(const Vector3f& u_d, const Vector3f& u_d_dot, float psi_d,
             float& T, float psi_d_dot, Quaternion& q_d, Vector3f& omega_d);
-        // Add this to your ModeLLC class declaration
     void calculate_hlc(const Vector3f& xi_c, const Vector3f& xi, 
         const Vector3f& xi_dot_c, const Vector3f& xi_dot, 
         const Vector3f& xi_ddot_c, const Vector3f& xi_ddot,
         Vector3f& u, Vector3f& u_dot, Vector3f& Ve);
 
     float sign(float x);
-    void set_3sta_parameters(float new_k1, float new_k2, float new_k3);
+    // Update method signature to accept Vector3f parameters
+    void set_3sta_parameters(const Vector3f& new_k1, const Vector3f& new_k2, const Vector3f& new_k3);
     void reset_3sta(void);
     Vector3f calculate_phi1(const Vector3f& x1, const Vector3f& x2);
     Vector3f calculate_phi1_dot(const Vector3f& x1, const Vector3f& x2, 
