@@ -4,22 +4,24 @@
 bool ModeLLC::init(bool ignore_checks)
 {
     // Set different gains for each axis (x, y, z)
-    set_3sta_parameters(Vector3f(0.35f, 0.35f, 0.45f),  // k1: higher gain for z-axis
-                       Vector3f(0.4f, 0.4f, 0.8f),      // k2: higher gain for z-axis
-                       Vector3f(0.05f, 0.05f, 0.08f));  // k3: higher gain for z-axis
+    set_3sta_parameters(Vector3f(0.45f, 0.45f, 0.65f),  // k1: higher gain for z-axis
+                       Vector3f(2.5f, 2.5f, 3.0f),      // k2: higher gain for z-axis
+                       Vector3f(0.1f, 0.1f, 0.15f));  // k3: higher gain for z-axis
+    
     reset_3sta();
     // Initialize position controller for Z axis if not already active
-    if (!pos_control->is_active_z()) {
-        pos_control->init_z_controller();
-    }
-    // Set vertical speed and acceleration limits
-    pos_control->set_max_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
-    pos_control->set_correction_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
+    // if (!pos_control->is_active_z()) {
+    //     pos_control->init_z_controller();
+    // }
+    // // Set vertical speed and acceleration limits
+    // pos_control->set_max_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
+    // pos_control->set_correction_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
 
     // Initialize trajectory timing
     _trajectory_start_ms = AP_HAL::millis();
     // Initialize last run time
     last_run_ms = AP_HAL::millis();
+    gcs().send_text(MAV_SEVERITY_INFO, "entering_LLC");
     return true;
 }
 
@@ -109,7 +111,9 @@ void ModeLLC::run()
         }
 
         // Calculate virtual control
-        calculate_virtual_control(u_d, u_d_dot, psi_d, T, psi_d_dot, target_attitude, target_ang_vel);
+        Vector3f u_aux = {0.0f, 0.0f, 0.0f};
+        u_aux = u_d + Vector3f{0.0f, 0.0f, 0.0f};
+        calculate_virtual_control(u_aux, u_d_dot, psi_d, T, psi_d_dot, target_attitude, target_ang_vel);
 
         // Log more detailed control info
         float d_r = Vector2f(xe.x, xe.y).length();
@@ -131,26 +135,26 @@ void ModeLLC::run()
     if (!motors->armed()) {
         motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::SHUT_DOWN);
         
-        attitude_control->reset_rate_controller_I_terms();
-        attitude_control->reset_yaw_target_and_rate(false);
-        pos_control->relax_z_controller(0.0f);   // forces throttle output to decay to zero
+        // attitude_control->reset_rate_controller_I_terms();
+        // attitude_control->reset_yaw_target_and_rate(false);
+        // pos_control->relax_z_controller(0.0f);   // forces throttle output to decay to zero
     } else {
         motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
     }
     switch (motors->get_spool_state()) {
     case AP_Motors::SpoolState::SHUT_DOWN:
         // Motors Stopped
-        attitude_control->reset_yaw_target_and_rate();
-        attitude_control->reset_rate_controller_I_terms();
-        pos_control->relax_z_controller(0.0f);
+        // attitude_control->reset_yaw_target_and_rate();
+        // attitude_control->reset_rate_controller_I_terms();
+        // pos_control->relax_z_controller(0.0f);
         break;
 
     case AP_Motors::SpoolState::GROUND_IDLE:
         // Landed
-        attitude_control->reset_yaw_target_and_rate();
-        attitude_control->reset_rate_controller_I_terms_smoothly();
+        // attitude_control->reset_yaw_target_and_rate();
+        // attitude_control->reset_rate_controller_I_terms_smoothly();
 
-        pos_control->relax_z_controller(0.0f);
+        // pos_control->relax_z_controller(0.0f);
         break;
 
     case AP_Motors::SpoolState::THROTTLE_UNLIMITED:
@@ -175,30 +179,44 @@ void ModeLLC::run()
 }
 
 // Fix function signature to match call site - IMPORTANT parameter order change!
-void ModeLLC::calculate_virtual_control(const Vector3f& u_d, const Vector3f& u_d_dot, float psi_d,
-    float& T, float psi_d_dot, Quaternion& q_d, Vector3f& omega_d) 
+void ModeLLC::calculate_virtual_control(const Vector3f& u_d, const Vector3f& u_dot_d, float psi_d,
+    float& T, float psi_dot_d, Quaternion& q_d, Vector3f& omega_d) 
 {
-    // Desired attitude
-    Vector3f u_d_norm = u_d.normalized();
-    Vector3f u_d_dot_norm = u_d_dot / u_d.length() - u_d * (u_d * u_d_dot) / powf(u_d.length(), 3.0f);
-    Quaternion q_dxy(1.0f/2.0f * sqrtf(-2*u_d_norm.z + 2),
-                     u_d_norm.y / sqrtf(-2*u_d_norm.z + 2),
-                     -u_d_norm.x / sqrtf(-2*u_d_norm.z + 2),
-                     0.0f);
 
-    Quaternion q_dz(cosf(psi_d/2.0f), 
-                         0.0f, 
-                         0.0f, 
-                         sinf(psi_d/2.0f));
+    Vector3f uu, uup;
+    float norm = u_d.length();  // This is the thrust magnitude
+    if (norm < 4.6416e-04f) norm = 4.6416e-04f;  // Minimum thrust value
+    float norm3 = norm * norm * norm;
+    float u = u_d.x * u_dot_d.x + u_d.y * u_dot_d.y + u_d.z * u_dot_d.z;
 
-    q_d = q_dxy * q_dz;
-    q_d.normalize();
-    omega_d = {-sinf(psi_d)*u_d_dot_norm.x + cosf(psi_d)*u_d_dot_norm.y + u_d_dot_norm.z*(sinf(psi_d)*u_d_norm.x - cosf(psi_d)*u_d_norm.y)/(u_d_norm.z - 1.0f),
-                         -cosf(psi_d)*u_d_dot_norm.x - sinf(psi_d)*u_d_dot_norm.y + u_d_dot_norm.z*(cosf(psi_d)*u_d_norm.x + sinf(psi_d)*u_d_norm.y)/(u_d_norm.z - 1.0f),
-                         psi_d_dot + (u_d_norm.x*u_d_dot_norm.y - u_d_norm.y*u_d_dot_norm.x)/(u_d_norm.z - 1.0f)};
+    uu = u_d;
+    uu.normalize();  // Unit vector in thrust direction
 
-    // Restore original thrust calculation - no bounds checking or filtering
-    T = u_d.length();
+    // Derivative of the unit thrust vector
+    uup.x = u_dot_d.x / norm - u_d.x * u / norm3;
+    uup.y = u_dot_d.y / norm - u_d.y * u / norm3;
+    uup.z = u_dot_d.z / norm - u_d.z * u / norm3;
+
+    
+
+    float u_3 = sqrtf(-2 * uu.z + 2);
+
+    // Calculate desired quaternion based on thrust direction
+    Quaternion refQuaternion;
+    refQuaternion.q1 = u_3 * cosf(psi_d / 2) / 2;
+    refQuaternion.q2 = (-uu.x * sinf(psi_d / 2) + uu.y * cosf(psi_d / 2)) / u_3;
+    refQuaternion.q3 = (-uu.x * cosf(psi_d / 2) - uu.y * sinf(psi_d / 2)) / u_3;
+    refQuaternion.q4 = sinf(psi_d / 2) * u_3 / 2;
+
+    // Calculate desired angular velocity
+    Vector3f refOmega;
+    refOmega.x = -uup.x * sinf(psi_d) + uup.y * cosf(psi_d) + uup.z * (uu.x * sinf(psi_d) - uu.y * cosf(psi_d)) / (1 - uu.z);
+    refOmega.y = -uup.x * cosf(psi_d) - uup.y * sinf(psi_d) + uup.z * (uu.x * cosf(psi_d) + uu.y * sinf(psi_d)) / (1 - uu.z);
+    refOmega.z = psi_dot_d - (-uu.x * uup.y + uu.y * uup.x) / (1 - uu.z);
+
+    T = norm;
+    q_d = refQuaternion;
+    omega_d = refOmega;
 }
 
 
@@ -220,6 +238,8 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
 
     // Distance and direction calculations
     float d = dv.length();
+    
+    
     Vector3f R = dv / d;
     float d_dot = dv_dot * R; 
     Vector3f R_dot = (dv_dot * d - dv * d_dot) / (d * d);
@@ -244,12 +264,30 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     
     // Height-dependent b parameter (similar to MATLAB implementation)
     float b = b_0 * (1.0f + k_b * expf(-k_b * z));
+    
+    // Check for potential overflow in exp calculation
+    if (-k_b * z > 88.0f) { // exp(88) is near float max
+        gcs().send_text(MAV_SEVERITY_WARNING, "FPE risk: Exp overflow in HLC: z=%.2f", (double)z);
+    }
+    
     float b_dot = -b_0 * k_b * k_b * expf(-k_b * z) * z_dot;
     
-    // Membership functions
+    // Membership functions - check for potential NaN in tanh/cosh functions
     float arg_far = b * (d - c);
+    if (fabsf(arg_far) > 88.0f) {
+        gcs().send_text(MAV_SEVERITY_WARNING, "FPE risk: Arg far too large in HLC: %.2f", (double)arg_far);
+        arg_far = (arg_far > 0) ? 88.0f : -88.0f; // Limit to avoid float issues
+    }
+    
     float mu_far = a * tanhf(arg_far);
-    float mu_close = 1.0f / coshf(b_0 * (d - c)); // Note: using b_0 for mu_close as in MATLAB
+    
+    float cosh_arg = b_0 * (d - c);
+    if (fabsf(cosh_arg) > 88.0f) {
+        gcs().send_text(MAV_SEVERITY_WARNING, "FPE risk: Cosh arg too large in HLC: %.2f", (double)cosh_arg);
+        cosh_arg = (cosh_arg > 0) ? 88.0f : -88.0f;
+    }
+    
+    float mu_close = 1.0f / coshf(cosh_arg); 
     
     // First derivatives of membership functions
     // float sech_arg_far = 1.0f / coshf(arg_far);
@@ -270,8 +308,6 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     // First derivative of desired velocity
     Vector3f Vd_dot = (R * (mu_far * c2_R_dot) + R * (mu_far_dot * c2_R) + R_dot * (mu_far * c2_R)) + 
                       (Tv * (mu_close * c2_T_dot) + Tv * (mu_close_dot * c2_T) + T_dot * (mu_close * c2_T));
-
-    Vector3f j_d = {0.0f, 0.0f, 0.0f}; // Desired jerk
     // Control law
     // float kv = 0.3f;
     // float m = 0.035f;
@@ -282,10 +318,10 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     // u = (V - Vd) * (-kv) - Vector3f(0.0f, 0.0f, m * gr);
     // u_dot = (V_dot - Vd_dot) * (-kv);
     // Initialize u.z
-    u.z = - 0.035f*9.81f;
+    // u.z = 0.035f*9.81f;
     // Call the control calculation function
-    calculate_3sta_control(V, Vd, V_dot, Vd_dot, j_d, u, u_dot);
-    
+    calculate_stsmc_control(V, Vd, V_dot, Vd_dot, u, u_dot);
+    // u.z += -0.035f*9.81f;
     // set u_dot to zero for testing
     // u_dot.zero();
 }
@@ -330,40 +366,18 @@ Vector3f ModeLLC::calculate_phi1(const Vector3f& x1, const Vector3f& x2) {
 
 
 /**
- * Calculate time derivative of phi1 (for control derivative)
- */
-Vector3f ModeLLC::calculate_phi1_dot(const Vector3f& x1, const Vector3f& x2, 
-    const Vector3f& x1_dot, const Vector3f& x2_dot) {
-    Vector3f phi1_dot = {0.0, 0.0, 0.0};
-
-    for (int i = 0; i < 3; i++) {
-    // Handle potential division by zero - now using axis-specific k2 gains
-    double x1_term = 0.0;
-    if (fabsf(x1[i]) > 1e-10) {
-    x1_term = k2[i] * (2.0/3.0) * powf(fabsf(x1[i]), -1.0/3.0) * sign(x1[i]) * x1_dot[i];
-    }
-
-    phi1_dot[i] = x2_dot[i] + x1_term;
-    }
-
-    return phi1_dot;
-}
-
-/**
  * Calculate the 3-STA control law for velocity tracking
  * 
  * @param v Current velocity [vx,vy,vz]
  * @param v_d Desired velocity [vx,vy,vz]
  * @param a Current acceleration [ax,ay,az]
  * @param a_d Desired acceleration [ax,ay,az]
- * @param j_d Desired jerk [jx,jy,jz]
  * @param dt Time step
  * @param u Output control signal
  * @param u_dot Output control derivative
  */
-void ModeLLC::calculate_3sta_control(const Vector3f& v, const Vector3f& v_d,
+void ModeLLC::calculate_stsmc_control(const Vector3f& v, const Vector3f& v_d,
     const Vector3f& a, const Vector3f& a_d,
-    const Vector3f& j_d,
     Vector3f& u, Vector3f& u_dot) {
 
     // Calculate error states for 3-STA
@@ -373,39 +387,34 @@ void ModeLLC::calculate_3sta_control(const Vector3f& v, const Vector3f& v_d,
         x2[i] = a[i] - a_d[i];    // Acceleration error
     }
 
-    // Calculate derivative of errors
-    // Vector3f x1_dot = x2;  // Derivative of velocity error is acceleration error
-    // Vector3f x2_dot;    // Derivative of acceleration error
-    // for (int i = 0; i < 3; i++) {
-    //     x2_dot[i] = -j_d[i];      // Assuming constant control
-    // }
-
     // Calculate phi1
     Vector3f phi1 = calculate_phi1(x1, x2);
 
-    // Calculate phi1_dot (needed for u_dot)
-    // Vector3f phi1_dot = calculate_phi1_dot(x1, x2, x1_dot, x2_dot);
-
-    // // Resize output vectors
-    // u.resize(3, 0.0);
-    // u_dot.resize(3, 0.0);
     Vector3f x3_dot = {0.0, 0.0, 0.0};
 
     for (int i = 0; i < 3; i++) {
-        // Calculate control derivate according to 3-STA equations - now using axis-specific gains
-        u_dot[i] = -k1[i] * powf(fabsf(phi1[i]), 0.5f) * sign(phi1[i]) + x3_state[i];
+        // Check for potential issues in pow calculation
+        float phi_abs = fabsf(phi1[i]);
+        
+        // Protect against very small values that might cause precision issues
+        if (phi_abs < 0.00001f) {
+            phi_abs = 0.00001f;
+        }
+        
+        // Calculate control derivate with protected values
+        u_dot[i] = -k1[i] * powf(phi_abs, 0.5f) * sign(phi1[i]) + x3_state[i];
 
         // Calculate the derivative of x3 (for integration) - now using axis-specific gains
         x3_dot[i] = -k3[i] * sign(phi1[i]);
 
         // Update the integral state
-        x3_state[i] += x3_dot[i] * dt;
+        x3_state[i] += last_x3[i] * dt;
 
         // Calculate the control signal
-        u[i] += u_dot[i] * dt;
+        u[i] = last_u[i] + u_dot[i] * dt;
+        last_u[i] = u[i];
+        last_x3[i] = x3_state[i];
     }
-    
-    // u[2] = u[2] - 0.035f*9.81f;
 }
 
 // Generate time-varying XY reference based on trajectory type

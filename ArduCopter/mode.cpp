@@ -389,6 +389,7 @@ bool Copter::set_mode(Mode::Number mode, ModeReason reason)
     }
 
     // return success
+    
     return true;
 }
 
@@ -425,6 +426,11 @@ void Copter::exit_mode(Mode *&old_flightmode,
         // this assumes all manual flight modes use get_pilot_desired_throttle to translate pilot input to output throttle
         set_accel_throttle_I_from_pilot_throttle();
     }
+    
+    if (old_flightmode->mode_number() == Mode::Number::LLC) {
+        gcs().send_text(MAV_SEVERITY_INFO, "exit_LLC");
+    }
+    // gcs().send_text(MAV_SEVERITY_INFO, "mode_change");
 
     // cancel any takeoffs in progress
     old_flightmode->takeoff_stop();

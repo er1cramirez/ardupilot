@@ -1689,6 +1689,10 @@ private:
     Vector3f k1 = {0.15f, 0.15f, 0.15f};  // Changed from float to Vector3f
     Vector3f k2 = {0.1f, 0.1f, 0.1f};     // Changed from float to Vector3f
     Vector3f k3 = {0.0f, 0.0f, 0.0f};     // Changed from float to Vector3f
+
+    // Initialize 3-STC variables
+    Vector3f last_x3 = {0.0f, 0.0f, 0.0f};
+    Vector3f last_u = {0.0f, 0.0f, -0.0385*9.81};  // Initial control output
     float dt;
     uint32_t last_run_ms;
 
@@ -1707,9 +1711,8 @@ private:
     Vector3f calculate_phi1(const Vector3f& x1, const Vector3f& x2);
     Vector3f calculate_phi1_dot(const Vector3f& x1, const Vector3f& x2, 
         const Vector3f& x1_dot, const Vector3f& x2_dot);
-    void calculate_3sta_control(const Vector3f& v, const Vector3f& v_d,
+    void calculate_stsmc_control(const Vector3f& v, const Vector3f& v_d,
         const Vector3f& a, const Vector3f& a_d,
-        const Vector3f& j_d,
         Vector3f& u, Vector3f& u_dot);
 
 protected:
