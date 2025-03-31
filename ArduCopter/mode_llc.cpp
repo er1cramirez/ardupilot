@@ -4,9 +4,9 @@
 bool ModeLLC::init(bool ignore_checks)
 {
     // Set different gains for each axis (x, y, z)
-    set_3sta_parameters(Vector3f(0.45f, 0.45f, 0.65f),  // k1: higher gain for z-axis
-                       Vector3f(2.5f, 2.5f, 3.0f),      // k2: higher gain for z-axis
-                       Vector3f(0.1f, 0.1f, 0.15f));  // k3: higher gain for z-axis
+    set_3sta_parameters(Vector3f(0.35f, 0.35f, 0.65f),  // k1: higher gain for z-axis
+                       Vector3f(3.5f, 3.5f, 3.0f),      // k2: higher gain for z-axis
+                       Vector3f(0.1f, 0.1f, 0.01f));  // k3: higher gain for z-axis
     
     reset_3sta();
     // Initialize position controller for Z axis if not already active
