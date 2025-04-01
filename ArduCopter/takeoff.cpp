@@ -120,9 +120,10 @@ void _AutoTakeoff::run()
     auto *motors = copter.motors;
     auto *pos_control = copter.pos_control;
     auto *attitude_control = copter.attitude_control;
-
+    
     // if not armed set throttle to zero and exit immediately
     if (!motors->armed() || !copter.ap.auto_armed) {
+        gcs().send_text(MAV_SEVERITY_ERROR, "Auto takeoff aborted - not armed");
         // do not spool down tradheli when on the ground with motor interlock enabled
         copter.flightmode->make_safe_ground_handling(copter.is_tradheli() && motors->get_interlock());
         // update auto_takeoff_no_nav_alt_cm
@@ -231,6 +232,7 @@ void _AutoTakeoff::start(float _complete_alt_cm, bool _terrain_alt)
     const auto &g2 = copter.g2;
     const auto &inertial_nav = copter.inertial_nav;
     no_nav_alt_cm = inertial_nav.get_position_z_up_cm() + g2.wp_navalt_min * 100;
+    gcs().send_text(MAV_SEVERITY_INFO, "takeoff altitude %d cm", (int)complete_alt_cm);
     if ((g2.wp_navalt_min > 0) && (copter.flightmode->is_disarmed_or_landed() || !copter.motors->get_interlock())) {
         // we are not flying, climb with no navigation to current alt-above-ekf-origin + wp_navalt_min
         no_nav_active = true;

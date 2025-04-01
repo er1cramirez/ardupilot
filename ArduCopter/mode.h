@@ -100,7 +100,7 @@ virtual bool handle_message(const mavlink_message_t &msg) { return false; }// if
         AUTOROTATE =   26,  // Autonomous autorotation
         AUTO_RTL =     27,  // Auto RTL, this is not a true mode, AUTO will report as this mode if entered to perform a DO_LAND_START Landing sequence
         TURTLE =       28,  // Flip over after crash
-        LLC =      29,  // Custom velocity control mode
+        LLC =          29,  // Custom velocity control mode
         // Mode number 30 reserved for "offboard" for external/lua control.
 
         // Mode number 127 reserved for the "drone show mode" in the Skybrush
@@ -1666,7 +1666,6 @@ private:
 #if MODE_LLC_ENABLED
 class ModeLLC : public Mode {
 public:
-    // ModeLLC(void);
     // // inherit constructor
     using Mode::Mode;
     Number mode_number() const override { return Number::LLC; }
@@ -1677,13 +1676,30 @@ public:
     bool has_manual_throttle() const override { return true; }
     bool allows_arming(AP_Arming::Method method) const override { return true; }
     bool is_autopilot() const override { return false; }
-    bool allows_save_trim() const override { return true; }
+    bool has_user_takeoff(bool must_navigate) const override { return true; }
+    bool requires_terrain_failsafe() const override { return true; }
     bool allows_autotune() const override { return true; }
     bool allows_flip() const override { return true; }
 
+    enum class SubMode {
+        TakeOff,
+        VelControl,
+        PosHold,
+        FailSafe,
+    };
     
+    SubMode submode() const { return llc_mode; }
+
+    bool is_taking_off() const override;
+    // initialises position controller to implement take-off
+    // takeoff_alt_cm is interpreted as alt-above-home (in cm) or alt-above-terrain if a rangefinder is available
+    bool do_user_takeoff_start(float takeoff_alt_cm) override;
 
 private:
+
+    static SubMode llc_mode;
+    static bool takeoff_complete; // true once takeoff has completed
+
 
     // Drone state variables(in NED frame)
     Vector3f _position;
@@ -1704,9 +1720,16 @@ private:
         float psi_d, float psi_dot_d,
         Quaternion& refQuat, Vector3f& refOmega);
 
+    void takeoff_run();
+    void vel_control_run();
+    void vel_control_start();
+    void pos_hold_run();
+    void pos_hold_start();
+    void fail_safe_run();
+
 protected:
    const char *name() const override { return "LLC"; }
-   const char *name4() const override { return "LLC"; }
+   const char *name4() const override { return "LL_C"; }
 };
 #endif
 

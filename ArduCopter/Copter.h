@@ -210,6 +210,7 @@ public:
     friend class ModeFlowHold;
     friend class ModeFollow;
     friend class ModeGuided;
+    friend class ModeLLC;
     friend class ModeLand;
     friend class ModeLoiter;
     friend class ModePosHold;
