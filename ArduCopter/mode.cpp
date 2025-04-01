@@ -39,9 +39,10 @@ Mode *Copter::mode_from_mode_num(const Mode::Number mode)
             return &mode_acro;
 #endif
 
+#if MODE_LLC_ENABLED
         case Mode::Number::LLC:
             return &mode_llc;
-
+#endif
         case Mode::Number::STABILIZE:
             return &mode_stabilize;
 

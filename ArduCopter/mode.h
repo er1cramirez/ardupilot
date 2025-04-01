@@ -71,7 +71,7 @@ class Mode {
     friend class PayloadPlace;
 
 public:
-
+virtual bool handle_message(const mavlink_message_t &msg) { return false; }// if not implemented, return false
     // Auto Pilot Modes enumeration
     enum class Number : uint8_t {
         STABILIZE =     0,  // manual airframe angle with manual throttle
@@ -1663,6 +1663,7 @@ private:
 
 };
 
+#if MODE_LLC_ENABLED
 class ModeLLC : public Mode {
 public:
     // ModeLLC(void);
@@ -1674,51 +1675,40 @@ public:
 
     bool requires_GPS() const override { return false; }
     bool has_manual_throttle() const override { return true; }
-    bool allows_arming(AP_Arming::Method method) const override { return true; };
+    bool allows_arming(AP_Arming::Method method) const override { return true; }
     bool is_autopilot() const override { return false; }
     bool allows_save_trim() const override { return true; }
     bool allows_autotune() const override { return true; }
     bool allows_flip() const override { return true; }
 
+    
+
 private:
+
+    // Drone state variables(in NED frame)
+    Vector3f _position;
+    Vector3f _velocity;
+    Vector3f _acceleration;
+
+    Vector3f _force_target;
+    Vector3f _force_target_derivative;
+    bool _have_new_force_target;
+    uint32_t _last_force_target_ms;
+
+    Quaternion refQuaternion;
+    Vector3f refAngularVelocity;
+    float refThrottle;
+    bool handle_message(const mavlink_message_t &msg) override;
     const float HOVER_THROTTLE = 0.35f; // Adjust this based on your vehicle
-    uint32_t _trajectory_start_ms;
-
-    // 3-STC variables with axis-specific gains
-    Vector3f x3_state = {0.0f, 0.0f, 0.0f};
-    Vector3f k1 = {0.15f, 0.15f, 0.15f};  // Changed from float to Vector3f
-    Vector3f k2 = {0.1f, 0.1f, 0.1f};     // Changed from float to Vector3f
-    Vector3f k3 = {0.0f, 0.0f, 0.0f};     // Changed from float to Vector3f
-
-    // Initialize 3-STC variables
-    Vector3f last_x3 = {0.0f, 0.0f, 0.0f};
-    Vector3f last_u = {0.0f, 0.0f, -0.0385*9.81};  // Initial control output
-    float dt;
-    uint32_t last_run_ms;
-
-    void generate_trajectory_reference(float& x_ref, float& y_ref);
-    void calculate_virtual_control(const Vector3f& u_d, const Vector3f& u_d_dot, float psi_d,
-            float& T, float psi_d_dot, Quaternion& q_d, Vector3f& omega_d);
-    void calculate_hlc(const Vector3f& xi_c, const Vector3f& xi, 
-        const Vector3f& xi_dot_c, const Vector3f& xi_dot, 
-        const Vector3f& xi_ddot_c, const Vector3f& xi_ddot,
-        Vector3f& u, Vector3f& u_dot, Vector3f& Ve);
-
-    float sign(float x);
-    // Update method signature to accept Vector3f parameters
-    void set_3sta_parameters(const Vector3f& new_k1, const Vector3f& new_k2, const Vector3f& new_k3);
-    void reset_3sta(void);
-    Vector3f calculate_phi1(const Vector3f& x1, const Vector3f& x2);
-    Vector3f calculate_phi1_dot(const Vector3f& x1, const Vector3f& x2, 
-        const Vector3f& x1_dot, const Vector3f& x2_dot);
-    void calculate_stsmc_control(const Vector3f& v, const Vector3f& v_d,
-        const Vector3f& a, const Vector3f& a_d,
-        Vector3f& u, Vector3f& u_dot);
+    void calculateVirtualMap(const Vector3f& u_d, const Vector3f& u_dot_d, 
+        float psi_d, float psi_dot_d,
+        Quaternion& refQuat, Vector3f& refOmega);
 
 protected:
    const char *name() const override { return "LLC"; }
    const char *name4() const override { return "LLC"; }
 };
+#endif
 
 #if FRAME_CONFIG == HELI_FRAME
 class ModeStabilize_Heli : public ModeStabilize {

@@ -276,6 +276,10 @@
  # define MODE_VELCTRL_ENABLED 1
 #endif
 
+#ifndef MODE_LLC_ENABLED
+  #define MODE_LLC_ENABLED 1
+#endif
+
 //////////////////////////////////////////////////////////////////////////////
 // RADIO CONFIGURATION
 //////////////////////////////////////////////////////////////////////////////
@@ -611,3 +615,4 @@
 #ifndef USER_PARAMS_ENABLED
   #define USER_PARAMS_ENABLED 0
 #endif
+
