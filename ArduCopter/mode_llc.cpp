@@ -4,9 +4,9 @@
 bool ModeLLC::init(bool ignore_checks)
 {
     // Set different gains for each axis (x, y, z)
-    set_3sta_parameters(Vector3f(0.35f, 0.35f, 0.65f),  // k1: higher gain for z-axis
-                       Vector3f(3.5f, 3.5f, 3.0f),      // k2: higher gain for z-axis
-                       Vector3f(0.1f, 0.1f, 0.01f));  // k3: higher gain for z-axis
+    set_3sta_parameters(Vector3f(0.1f, 0.1f, 0.4f),  // k1: higher gain for z-axis
+                       Vector3f(5.5f, 5.5f, 5.5f),      // k2: higher gain for z-axis
+                       Vector3f(0.02f, 0.02f, 0.02f));  // k3: higher gain for z-axis
     
     reset_3sta();
     // Initialize position controller for Z axis if not already active
@@ -408,7 +408,7 @@ void ModeLLC::calculate_stsmc_control(const Vector3f& v, const Vector3f& v_d,
         x3_dot[i] = -k3[i] * sign(phi1[i]);
 
         // Update the integral state
-        x3_state[i] += last_x3[i] * dt;
+        x3_state[i] = last_x3[i] + x3_dot[i] * dt;
 
         // Calculate the control signal
         u[i] = last_u[i] + u_dot[i] * dt;
