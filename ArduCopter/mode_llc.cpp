@@ -253,7 +253,7 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     // float mu_close_dot = -b_0 * tanhf(b_0 * (d - c)) * (1.0f / coshf(b_0 * (d - c))) * d_dot;
     
     // Gain parameters
-    float c2_k = 0.1f;
+    float c2_k = 0.3f;
     float c2_T = c2_k * tanhf(b * z); // Using b_0 as in the original code
     // float c2_T_dot = c2_k * (b_0 * powf(1.0f / coshf(b_0 * z), 2.0f) * z_dot);
     float c2_R = 1.1f;
