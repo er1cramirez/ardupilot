@@ -17,6 +17,7 @@ bool ModeLLC::init(bool ignore_checks)
     _trajectory_start_ms = AP_HAL::millis();
     // Initialize last run time
     last_run_ms = AP_HAL::millis();
+    gcs().send_text(MAV_SEVERITY_INFO, "entering_LLC");
     return true;
 }
 
