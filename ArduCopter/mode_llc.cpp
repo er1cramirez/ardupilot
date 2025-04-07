@@ -108,7 +108,7 @@ void ModeLLC::run()
     {   
         // Apply offset to z coordinate
         float z_offset = 0.3f; // Example offset
-        x.z += z_offset;
+        x.z = x.z + z_offset;
         x_ddot = ahrs.get_accel_ef(); // Acceleration in NED inertial frame
         x_ddot = x_ddot + e_z*grav;
 
