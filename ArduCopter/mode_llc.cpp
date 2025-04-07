@@ -13,6 +13,7 @@ bool ModeLLC::init(bool ignore_checks)
 
     // Initialize trajectory timing
     _trajectory_start_ms = AP_HAL::millis();
+    gcs().send_text(MAV_SEVERITY_INFO, "entering_LLC");
     return true;
 }
 
