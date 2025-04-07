@@ -106,6 +106,9 @@ void ModeLLC::run()
     // Get position, velocity and acceleration data
     if(ahrs.get_relative_position_NED_home(x) && ahrs.get_velocity_NED(x_dot)) 
     {   
+        // Apply offset to z coordinate
+        float z_offset = 0.3f; // Example offset
+        x.z += z_offset;
         x_ddot = ahrs.get_accel_ef(); // Acceleration in NED inertial frame
         x_ddot = x_ddot + e_z*grav;
 
@@ -318,7 +321,7 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
                       (Tv * (mu_close * c2_T_dot) + Tv * (mu_close_dot * c2_T) + T_dot * (mu_close * c2_T));
 
     // Control law
-    float kv = 0.3f;
+    float kv = 0.2f;
     float m = 0.035f;
     float gr = 9.81f;
 
