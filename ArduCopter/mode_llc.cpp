@@ -306,7 +306,7 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
     float mu_close_dot = -b_0 * tanhf(b_0 * (d - c)) * (1.0f / coshf(b_0 * (d - c))) * d_dot;
     
     // Gain parameters
-    float c2_k = 0.1f;
+    float c2_k = 0.4f;
     float c2_T = c2_k * tanhf(b_0 * z); // Using b_0 as in the original code
     float c2_T_dot = c2_k * (b_0 * powf(1.0f / coshf(b_0 * z), 2.0f) * z_dot);
     float c2_R = 1.1f;
@@ -321,13 +321,16 @@ void ModeLLC::calculate_hlc(const Vector3f& xi_c, const Vector3f& xi,
                       (Tv * (mu_close * c2_T_dot) + Tv * (mu_close_dot * c2_T) + T_dot * (mu_close * c2_T));
 
     // Control law
-    float kv = 0.2f;
-    float m = 0.035f;
+    Matrix3f kp1(-0.2f, 0.0f, 0.0f,
+                0.0f, -0.2f, 0.0f,
+                0.0f, 0.0f, -0.35f);
+    // float kv = 0.2f;
+    float m = 0.0385f;
     float gr = 9.81f;
 
     // Calculate control outputs
     Ve = V - Vd;
-    u = (V - Vd) * (-kv) - Vector3f(0.0f, 0.0f, m * gr);
-    u_dot = (V_dot - Vd_dot) * (-kv);
+    u = kp1 * (V - Vd) - Vector3f(0.0f, 0.0f, m * gr);
+    u_dot = kp1 * (V_dot - Vd_dot);
 }
 
