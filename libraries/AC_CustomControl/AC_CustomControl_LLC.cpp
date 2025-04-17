@@ -49,6 +49,13 @@ const AP_Param::GroupInfo AC_CustomControl_LLC::var_info[] = {
     // @User: Standard
     AP_GROUPINFO("YAW_D", 6, AC_CustomControl_LLC, _kd_yaw, 0.2f),
 
+    // @Param: THROTTLE_HOVER
+    // @DisplayName: Throttle hover
+    // @Description: Throttle hover value for the vehicle
+    // @Range: 0.0 1.0
+    // @User: Standard
+    AP_GROUPINFO("THROTTLE_HOVER", 7, AC_CustomControl_LLC, _throttle_hover, 0.5f),
+
     AP_GROUPEND
 };
 
