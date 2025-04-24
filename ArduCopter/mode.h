@@ -1674,7 +1674,7 @@ public:
     void run() override;
 
     bool requires_GPS() const override { return false; }
-    bool has_manual_throttle() const override { return true; }
+    bool has_manual_throttle() const override { return false; }
     bool allows_arming(AP_Arming::Method method) const override { return true; }
     bool is_autopilot() const override { return false; }
     bool allows_save_trim() const override { return true; }
@@ -1690,9 +1690,10 @@ private:
     Vector3f _velocity;
     Vector3f _acceleration;
 
-    Vector3f _force_target;
-    Vector3f _force_target_derivative;
-    bool _have_new_force_target;
+    Vector3f _force_target = Vector3f(0, 0, 0);
+    Vector3f _force_target_derivative = Vector3f(0, 0, 0);
+    bool _have_new_force_target = false;
+    bool _return_home = true;
     uint32_t _last_force_target_ms;
 
     Quaternion refQuaternion;

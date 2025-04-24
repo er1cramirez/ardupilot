@@ -17,7 +17,8 @@ bool ModeLLC::init(bool ignore_checks)
     // Set zero angular velocity
     refAngularVelocity.zero();
     // Set zero thrust
-    refThrottle = 0.039*9.81f;
+    refThrottle = 0.03351f*9.81f;
+    _return_home = true;
     gcs().send_text(MAV_SEVERITY_INFO, "entering_LLC");
     return true;
 }
@@ -26,6 +27,41 @@ bool ModeLLC::init(bool ignore_checks)
 void ModeLLC::run()
 {
 
+    float x_ref = 0.0f, y_ref = 0.0f, z_ref = 3.0f;
+    float x_dot_ref = 0.0f, y_dot_ref = 0.0f, z_dot_ref = 0.0f;
+    float x_ddot_ref = 0.0f, y_ddot_ref = 0.0f, z_ddot_ref = 0.0f;
+    float x_dddot_ref = 0.0f, y_dddot_ref = 0.0f, z_dddot_ref = 0.0f;
+
+    Vector3f x_d(x_ref, y_ref, -z_ref);
+    Vector3f x_d_dot(x_dot_ref, y_dot_ref, -z_dot_ref);
+    Vector3f x_d_ddot(x_ddot_ref, y_ddot_ref, -z_ddot_ref);
+    Vector3f x_d_dddot(x_dddot_ref, y_dddot_ref, -z_dddot_ref);
+    // float psi_d = 3.1416f/4.0f;
+    float psi_d = 0.0f;
+    float psi_d_dot = 0.0f;
+
+    // Parameters
+    float mass = 0.03351f;
+    float gravity = 9.81f;
+    Vector3f e_z(0.0f, 0.0f, 1.0f);
+
+    // Drone data initialization
+    Vector3f x(0.0f, 0.0f, 0.0f);
+    Vector3f x_dot(0.0f, 0.0f, 0.0f);
+    Vector3f x_ddot(0.0f, 0.0f, 0.0f);
+
+    // Control gains
+    Matrix3f kp1(-0.5f, 0.0f, 0.0f,
+        0.0f, -0.5f, 0.0f,
+        0.0f, 0.0f, -0.5f);
+
+    Matrix3f kd1(-0.25f, 0.0f, 0.0f,
+        0.0f, -0.25, 0.0f,
+        0.0f, 0.0f, -0.25f);
+
+    Vector3f u_d(0.0f, 0.0f, 0.0f);
+    Vector3f u_d_dot(0.0f, 0.0f, 0.0f);
+
     // Get position, velocity and acceleration data
     if(ahrs.get_relative_position_NED_home(_position) && ahrs.get_velocity_NED(_velocity)) 
     {   
@@ -33,9 +69,25 @@ void ModeLLC::run()
         // x.z = x.z + z_offset; // Add offset to z position
         _acceleration = ahrs.get_accel_ef(); // Acceleration in NED inertial frame
         // Add the gravity vector to the acceleration
-
-
         // calculate_virtual_control(_force_target, _force_target_derivative, 0.0f, refThrottle, 0.0f, refQuaternion, refAngularVelocity);
+        if(_return_home)
+        {
+            x = _position;
+            x_dot = _velocity;
+            x_ddot = _acceleration + e_z*gravity;
+    
+            // Errors
+            Vector3f xe = x - x_d;
+            Vector3f xe_dot = x_dot - x_d_dot;
+            Vector3f xe_ddot = x_ddot - x_d_ddot;
+            
+            // Control law
+            u_d = kp1 * xe + kd1 * xe_dot - e_z * mass * gravity + x_d_ddot * mass;
+            u_d_dot = kp1 * xe_dot + kd1 * xe_ddot + x_d_dddot * mass;
+            gcs().send_text(MAV_SEVERITY_INFO, "Reference calculated");
+        }
+
+        gcs().send_text(MAV_SEVERITY_INFO, "Si etnrooo");
 
         AP::logger().Write("VLCL",
             "TimeUS,u_d.x,u_d.y,u_d.z,u_d_dot.x,u_d_dot.y,u_d_dot.z",
@@ -50,43 +102,48 @@ void ModeLLC::run()
         // Log the force target and its derivative
     }
     // Handle motor spool states
-    if (!motors->armed()) {
-        motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::SHUT_DOWN);
+    // if (!motors->armed()) {
+    //     motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::SHUT_DOWN);
         
-        // attitude_control->reset_rate_controller_I_terms();
-        // attitude_control->reset_yaw_target_and_rate(false);
-        // pos_control->relax_z_controller(0.0f);   // forces throttle output to decay to zero
-    } else {
-        motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
-    }
+    //     attitude_control->reset_rate_controller_I_terms();
+    //     attitude_control->reset_yaw_target_and_rate(false);
+    //     pos_control->relax_z_controller(0.0f);   // forces throttle output to decay to zero
+    // } else {
+    //     motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
+    // }
     switch (motors->get_spool_state()) {
     case AP_Motors::SpoolState::SHUT_DOWN:
         // Motors Stopped
-        // attitude_control->reset_yaw_target_and_rate();
-        // attitude_control->reset_rate_controller_I_terms();
-        // pos_control->relax_z_controller(0.0f);
+        attitude_control->reset_yaw_target_and_rate();
+        attitude_control->reset_rate_controller_I_terms();
+        pos_control->relax_z_controller(0.0f);
         break;
 
     case AP_Motors::SpoolState::GROUND_IDLE:
         // Landed
-        // attitude_control->reset_yaw_target_and_rate();
-        // attitude_control->reset_rate_controller_I_terms_smoothly();
+        attitude_control->reset_yaw_target_and_rate();
+        attitude_control->reset_rate_controller_I_terms_smoothly();
 
-        // pos_control->relax_z_controller(0.0f);
+        pos_control->relax_z_controller(0.0f);
         break;
 
     case AP_Motors::SpoolState::THROTTLE_UNLIMITED:
         // Flying - run quaternion controller
         
         if (_have_new_force_target) { 
-            if (refThrottle > 1.0f) {
-                gcs().send_text(MAV_SEVERITY_ERROR, "refThrottle > 1.0f");
-                refThrottle = 0.7f;
-            }
-            attitude_control->input_quaternion(refQuaternion, refAngularVelocity);
-            attitude_control->set_throttle_out(refThrottle, false, g.throttle_filt);
-            _have_new_force_target = false;
+            calculateVirtualMap(_force_target, _force_target_derivative, psi_d, psi_d_dot, refQuaternion, refAngularVelocity);
+            // _have_new_force_target = false;
+            _return_home = false;
         }
+        else
+        {
+            calculateVirtualMap(u_d, u_d_dot, psi_d, psi_d_dot, refQuaternion, refAngularVelocity);
+            // gcs().send_text(MAV_SEVERITY_INFO, "Sending return home");
+        }
+
+        attitude_control->input_quaternion(refQuaternion, refAngularVelocity);
+        // attitude_control->set_throttle_out(refThrottle, false, g.throttle_filt); 
+        motors->set_throttle(refThrottle);
 
         // pos_control->set_alt_target_with_slew(70.0f);
         if (!motors->limit.throttle_lower) {
@@ -124,10 +181,12 @@ bool ModeLLC::handle_message(const mavlink_message_t &msg)
             _force_target_derivative.y = packet.force_derivative_y;
             _force_target_derivative.z = packet.force_derivative_z;
 
-            // calculate_virtual_control(_force_target, _force_target_derivative, 0.0f,
-            //     refThrottle, 0.0f, refQuaternion, refAngularVelocity);
-            calculateVirtualMap(_force_target, _force_target_derivative, 0.0f,
-                0.0f, refQuaternion, refAngularVelocity);
+            Quaternion bodyQuaternion;
+            ahrs.get_quat_body_to_ned(bodyQuaternion);
+            bodyQuaternion.normalize();
+            _force_target = bodyQuaternion * _force_target;
+            _force_target.z += -0.03351f*9.81f;
+            
             _have_new_force_target = true;
             _last_force_target_ms = AP_HAL::millis();
             
