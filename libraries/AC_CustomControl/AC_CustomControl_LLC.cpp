@@ -98,6 +98,8 @@ Vector3f AC_CustomControl_LLC::update()
     
     // Calculate attitude error quaternion
     Quaternion q_error;
+    attitude_target.normalize();
+    attitude_body.normalize();
     calculate_attitude_error_quaternion(attitude_body, attitude_target, q_error);
 
     AP::logger().Write("XQBT", "TimeUS,q1b,q2b,q3b,q4b,q1t,q2t,q3t,q4t", "Qffffffff", 
@@ -133,6 +135,21 @@ Vector3f AC_CustomControl_LLC::update()
     
     // Calculate angular velocity error
     Vector3f ang_vel_error = target_ang_vel - gyro;
+
+    AP::logger().Write("XOME", "TimeUS,wx,wy,wz,wxt,wyt,wzt", "Qffffff", 
+        AP_HAL::micros64(), 
+        gyro.x,
+        gyro.y,
+        gyro.z,
+        target_ang_vel.x,
+        target_ang_vel.y,
+        target_ang_vel.z);
+
+    AP::logger().Write("XOER", "TimeUS,ex,ey,ez", "Qfff", 
+        AP_HAL::micros64(), 
+        rotation_vector_error.x,
+        rotation_vector_error.y,
+        rotation_vector_error.z);
     
     // Apply PD controller gains
     Vector3f torques;
