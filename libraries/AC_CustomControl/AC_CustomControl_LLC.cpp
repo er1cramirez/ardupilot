@@ -4,6 +4,7 @@
 
 #include "AC_CustomControl_LLC.h"
 #include <AP_Math/AP_Math.h>
+#include <AP_Logger/AP_Logger.h>
 
 // table of user settable parameters
 const AP_Param::GroupInfo AC_CustomControl_LLC::var_info[] = {
@@ -93,10 +94,29 @@ Vector3f AC_CustomControl_LLC::update()
     // Get target attitude from attitude controller
     Quaternion attitude_target;
     attitude_target = _att_control->get_attitude_target_quat();
+
     
     // Calculate attitude error quaternion
     Quaternion q_error;
     calculate_attitude_error_quaternion(attitude_body, attitude_target, q_error);
+
+    AP::logger().Write("XQBT", "TimeUS,q1b,q2b,q3b,q4b,q1t,q2t,q3t,q4t", "Qffffffff", 
+                       AP_HAL::micros64(), 
+                       attitude_body.q1, 
+                       attitude_body.q2, 
+                       attitude_body.q3, 
+                       attitude_body.q4,
+                       attitude_target.q1,
+                       attitude_target.q2,
+                       attitude_target.q3,
+                       attitude_target.q4);
+
+    AP::logger().Write("XQER", "TimeUS,q1error,q2error,q3error,q4error", "Qffff", 
+                       AP_HAL::micros64(), 
+                       q_error.q1, 
+                       q_error.q2, 
+                       q_error.q3, 
+                       q_error.q4);
     
     // Convert quaternion error to rotation vector (roll, pitch, yaw errors)
     // Calculate error quaternion using requested approach
