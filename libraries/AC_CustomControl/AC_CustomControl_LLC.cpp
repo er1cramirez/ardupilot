@@ -88,7 +88,8 @@ Vector3f AC_CustomControl_LLC::update()
 {
     // Get current attitude as quaternion
     Quaternion attitude_body;
-    _ahrs->get_quat_body_to_ned(attitude_body);
+    // _ahrs->get_quat_body_to_ned(attitude_body);
+    _ahrs->get_body_quat(attitude_body);
     
     // Get target attitude from attitude controller
     Quaternion attitude_target;

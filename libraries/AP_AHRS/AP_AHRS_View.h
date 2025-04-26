@@ -136,6 +136,10 @@ public:
         return ahrs.get_relative_position_D_origin(posD);
     }
 
+    bool get_body_quat(Quaternion &qBody) const {
+        return ahrs.get_quaternion(qBody);
+    }
+
     float groundspeed(void) {
         return ahrs.groundspeed();
     }
