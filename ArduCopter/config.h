@@ -179,6 +179,12 @@
 #endif
 
 //////////////////////////////////////////////////////////////////////////////
+// LowLevelControl - control vehicle's position from GCS
+#ifndef MODE_LLC_ENABLED
+# define MODE_LLC_ENABLED 1
+#endif
+
+//////////////////////////////////////////////////////////////////////////////
 // GuidedNoGPS mode - control vehicle's angles from GCS
 #ifndef MODE_GUIDED_NOGPS_ENABLED
 # define MODE_GUIDED_NOGPS_ENABLED 1

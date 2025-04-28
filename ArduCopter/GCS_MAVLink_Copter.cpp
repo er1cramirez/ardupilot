@@ -1497,6 +1497,11 @@ void GCS_MAVLINK_Copter::handle_message(const mavlink_message_t &msg)
 {
 
     switch (msg.msgid) {
+#if MODE_LLC_ENABLED
+    case MAVLINK_MSG_ID_FORCE_VECTOR_TARGET:
+        copter.flightmode->handle_message(msg);
+        break;
+#endif
 #if MODE_GUIDED_ENABLED
     case MAVLINK_MSG_ID_SET_ATTITUDE_TARGET:
         handle_message_set_attitude_target(msg);

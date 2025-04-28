@@ -135,6 +135,7 @@ public:
     virtual bool allows_autotune() const { return false; }
     virtual bool allows_flip() const { return false; }
     virtual bool crash_check_enabled() const { return true; }
+    virtual bool handle_message(const mavlink_message_t &msg) { return false; } // Mavlink message handler
 
 #if AP_COPTER_ADVANCED_FAILSAFE_ENABLED
     // Return the type of this mode for use by advanced failsafe
@@ -1682,6 +1683,11 @@ public:
 
 private:
     const float HOVER_THROTTLE = 0.35f; // Adjust this based on your vehicle
+    Vector3f _force_target; // target force in body frame
+    Vector3f _force_target_derivative; // target force derivative in body frame
+    bool _have_new_force_target; // true if we have a new force target
+    uint32_t _last_force_target_ms; // time of last force target update
+    bool handle_message(const mavlink_message_t &msg) override; // handle messages from companion computer
 
 protected:
    const char *name() const override { return "LLC"; }

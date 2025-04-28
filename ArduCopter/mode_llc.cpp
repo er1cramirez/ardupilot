@@ -14,8 +14,6 @@ bool ModeLLC::init(bool ignore_checks)
     return true;
 }
 
-
-
 void ModeLLC::run()
 {
     // Set desired neutral attitude (null quaternion)
@@ -68,4 +66,49 @@ void ModeLLC::run()
     // Set throttle directly to the motors
     // motors->set_throttle(0.35f);
     pos_control->update_z_controller();
+}
+
+bool ModeLLC::handle_message(const mavlink_message_t &msg)
+{
+    switch (msg.msgid) {
+        case MAVLINK_MSG_ID_FORCE_VECTOR_TARGET: {
+            // Verificar que el mensaje es para este sistema
+            mavlink_force_vector_target_t packet;
+            mavlink_msg_force_vector_target_decode(&msg, &packet);
+            
+            if (packet.target_system != g.sysid_this_mav) {
+                break;
+            }
+            
+            // Actualizar el vector de fuerza
+            _force_target.x = packet.force_x;
+            _force_target.y = packet.force_y;
+            _force_target.z = packet.force_z;
+            _force_target_derivative.x = packet.force_derivative_x;
+            _force_target_derivative.y = packet.force_derivative_y;
+            _force_target_derivative.z = packet.force_derivative_z;
+
+            AP::logger().Write("ZYXW", "TimeUS,fx,fy,fz,fxd,fyd,fzd", "Qffffff", 
+                AP_HAL::micros64(), 
+                (float)_force_target.x, 
+                (float)_force_target.y, 
+                (float)_force_target.z, 
+                (float)_force_target_derivative.x, 
+                (float)_force_target_derivative.y, 
+                (float)_force_target_derivative.z);
+
+            gcs().send_text(MAV_SEVERITY_INFO, "Force vector target received");
+
+            Quaternion bodyQuaternion;
+            ahrs.get_quat_body_to_ned(bodyQuaternion);
+            bodyQuaternion.normalize();
+            _force_target = bodyQuaternion * _force_target;
+            _force_target.z += -0.03351f*9.81f;
+            
+            _have_new_force_target = true;
+            _last_force_target_ms = AP_HAL::millis();
+            return true;
+        }
+    }
+    return false;
 }
