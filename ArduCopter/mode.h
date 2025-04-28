@@ -1682,12 +1682,19 @@ public:
     bool allows_flip() const override { return true; }
 
 private:
+    Quaternion refQuaternion;
+    Vector3f refAngularVelocity;
+    float refThrottle;
     const float HOVER_THROTTLE = 0.35f; // Adjust this based on your vehicle
+    
     Vector3f _force_target; // target force in body frame
     Vector3f _force_target_derivative; // target force derivative in body frame
     bool _have_new_force_target; // true if we have a new force target
     uint32_t _last_force_target_ms; // time of last force target update
     bool handle_message(const mavlink_message_t &msg) override; // handle messages from companion computer
+    void calculateVirtualMap(const Vector3f& u_d, const Vector3f& u_dot_d, 
+        float psi_d, float psi_dot_d,
+        Quaternion& refQuat, Vector3f& refOmega);
 
 protected:
    const char *name() const override { return "LLC"; }
