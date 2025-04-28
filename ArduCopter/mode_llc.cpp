@@ -1,7 +1,5 @@
 #include "Copter.h"
 
-#if AP_MODE_LLC_ENABLED
-
 bool ModeLLC::init(bool ignore_checks)
 {
     // Initialize position controller for Z axis if not already active
@@ -18,11 +16,69 @@ bool ModeLLC::init(bool ignore_checks)
 
 void ModeLLC::run()
 {
-    // Set desired neutral attitude (null quaternion)
-    Quaternion target_attitude;
-    target_attitude.initialise(); // This creates identity quaternion (no rotation)
-    // Set zero angular velocity
-    Vector3f target_ang_vel(0.0f, 0.0f, 0.0f);
+    // // Set desired neutral attitude (null quaternion)
+    // Quaternion target_attitude;
+    // target_attitude.initialise(); // This creates identity quaternion (no rotation)
+    // // Set zero angular velocity
+    // Vector3f target_ang_vel(0.0f, 0.0f, 0.0f);
+
+    float x_ref = 0.0f, y_ref = 0.0f, z_ref = 3.0f;
+    float x_dot_ref = 0.0f, y_dot_ref = 0.0f, z_dot_ref = 0.0f;
+    float x_ddot_ref = 0.0f, y_ddot_ref = 0.0f, z_ddot_ref = 0.0f;
+    float x_dddot_ref = 0.0f, y_dddot_ref = 0.0f, z_dddot_ref = 0.0f;
+
+    Vector3f x_d(x_ref, y_ref, -z_ref);
+    Vector3f x_d_dot(x_dot_ref, y_dot_ref, -z_dot_ref);
+    Vector3f x_d_ddot(x_ddot_ref, y_ddot_ref, -z_ddot_ref);
+    Vector3f x_d_dddot(x_dddot_ref, y_dddot_ref, -z_dddot_ref);
+    // float psi_d = 3.1416f/4.0f;
+    float psi_d = 0.0f;
+    float psi_d_dot = 0.0f;
+
+    // Parameters
+    float mass = 0.03351f;
+    float gravity = 9.81f;
+    Vector3f e_z(0.0f, 0.0f, 1.0f);
+
+    // Drone data initialization
+    Vector3f x(0.0f, 0.0f, 0.0f);
+    Vector3f x_dot(0.0f, 0.0f, 0.0f);
+    Vector3f x_ddot(0.0f, 0.0f, 0.0f);
+
+    // Control gains
+    Matrix3f kp1(-0.5f, 0.0f, 0.0f,
+        0.0f, -0.5f, 0.0f,
+        0.0f, 0.0f, -0.5f);
+
+    Matrix3f kd1(-0.25f, 0.0f, 0.0f,
+        0.0f, -0.25, 0.0f,
+        0.0f, 0.0f, -0.25f);
+
+    Vector3f u_d(0.0f, 0.0f, 0.0f);
+    Vector3f u_d_dot(0.0f, 0.0f, 0.0f);
+
+    // Get position, velocity and acceleration data
+    if(ahrs.get_relative_position_NED_home(_position) && ahrs.get_velocity_NED(_velocity)) 
+    {   
+        _acceleration = ahrs.get_accel_ef(); // Acceleration in NED inertial frame
+
+        if(_return_home)
+        {
+            x = _position;
+            x_dot = _velocity;
+            x_ddot = _acceleration + e_z*gravity;
+    
+            // Errors
+            Vector3f xe = x - x_d;
+            Vector3f xe_dot = x_dot - x_d_dot;
+            Vector3f xe_ddot = x_ddot - x_d_ddot;
+            
+            // Control law
+            u_d = kp1 * xe + kd1 * xe_dot - e_z * mass * gravity + x_d_ddot * mass;
+            u_d_dot = kp1 * xe_dot + kd1 * xe_ddot + x_d_dddot * mass;
+            gcs().send_text(MAV_SEVERITY_INFO, "Reference calculated");
+        }
+    }
 
  
     // Handle motor spool states
@@ -52,9 +108,18 @@ void ModeLLC::run()
         break;
 
     case AP_Motors::SpoolState::THROTTLE_UNLIMITED:
+        if (_have_new_force_target) { 
+            calculateVirtualMap(_force_target, _force_target_derivative, psi_d, psi_d_dot, refQuaternion, refAngularVelocity);
+            _return_home = false;
+        }
+        else
+        {
+            calculateVirtualMap(u_d, u_d_dot, psi_d, psi_d_dot, refQuaternion, refAngularVelocity);
+        }
+
         // Flying - run quaternion controller
-        attitude_control->input_quaternion(target_attitude, target_ang_vel);
-        pos_control->set_alt_target_with_slew(100.0f);
+        attitude_control->input_quaternion(refQuaternion, refAngularVelocity);
+        pos_control->set_alt_target_with_slew(200.0f);
         break;
 
     case AP_Motors::SpoolState::SPOOLING_UP:
@@ -192,5 +257,3 @@ void ModeLLC::calculateVirtualMap(const Vector3f& u_d, const Vector3f& u_dot_d,
 
     refThrottle = thrust;
 }
-
-#endif // AP_MODE_LLC_ENABLED
