@@ -1,4 +1,5 @@
 #include "Copter.h"
+#define IS_SIM false
 
 bool ModeLLC::init(bool ignore_checks)
 {
@@ -11,17 +12,18 @@ bool ModeLLC::init(bool ignore_checks)
     pos_control->set_max_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
     pos_control->set_correction_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
 
+    _return_home = true;
+    _have_new_force_target = false;
+
     return true;
 }
 
 void ModeLLC::run()
 {
-    // // Set desired neutral attitude (null quaternion)
-    // Quaternion target_attitude;
-    // target_attitude.initialise(); // This creates identity quaternion (no rotation)
-    // // Set zero angular velocity
-    // Vector3f target_ang_vel(0.0f, 0.0f, 0.0f);
-
+    float psi_d = 0.0f;
+    float psi_d_dot = 0.0f;
+    
+#if IS_SIM
     float x_ref = 0.0f, y_ref = 0.0f, z_ref = 3.0f;
     float x_dot_ref = 0.0f, y_dot_ref = 0.0f, z_dot_ref = 0.0f;
     float x_ddot_ref = 0.0f, y_ddot_ref = 0.0f, z_ddot_ref = 0.0f;
@@ -32,8 +34,6 @@ void ModeLLC::run()
     Vector3f x_d_ddot(x_ddot_ref, y_ddot_ref, -z_ddot_ref);
     Vector3f x_d_dddot(x_dddot_ref, y_dddot_ref, -z_dddot_ref);
     // float psi_d = 3.1416f/4.0f;
-    float psi_d = 0.0f;
-    float psi_d_dot = 0.0f;
 
     // Parameters
     float mass = 0.03351f;
@@ -79,6 +79,7 @@ void ModeLLC::run()
             gcs().send_text(MAV_SEVERITY_INFO, "Reference calculated");
         }
     }
+#endif
 
  
     // Handle motor spool states
@@ -112,11 +113,19 @@ void ModeLLC::run()
             calculateVirtualMap(_force_target, _force_target_derivative, psi_d, psi_d_dot, refQuaternion, refAngularVelocity);
             _return_home = false;
         }
+#if IS_SIM
         else
         {
             calculateVirtualMap(u_d, u_d_dot, psi_d, psi_d_dot, refQuaternion, refAngularVelocity);
         }
-
+#else
+        else
+        {
+            // Set desired neutral attitude (null quaternion)
+            refQuaternion = Quaternion(1.0f, 0.0f, 0.0f, 0.0f);
+            refAngularVelocity = Vector3f(0.0f, 0.0f, 0.0f);
+        }
+#endif
         // Flying - run quaternion controller
         attitude_control->input_quaternion(refQuaternion, refAngularVelocity);
         pos_control->set_alt_target_with_slew(200.0f);
