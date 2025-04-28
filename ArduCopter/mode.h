@@ -71,7 +71,6 @@ class Mode {
     friend class PayloadPlace;
 
 public:
-virtual bool handle_message(const mavlink_message_t &msg) { return false; }// if not implemented, return false
     // Auto Pilot Modes enumeration
     enum class Number : uint8_t {
         STABILIZE =     0,  // manual airframe angle with manual throttle
@@ -135,6 +134,7 @@ virtual bool handle_message(const mavlink_message_t &msg) { return false; }// if
     virtual bool allows_autotune() const { return false; }
     virtual bool allows_flip() const { return false; }
     virtual bool crash_check_enabled() const { return true; }
+    virtual bool handle_message(const mavlink_message_t &msg) { return false; }// if not implemented, return false
 
 #if AP_COPTER_ADVANCED_FAILSAFE_ENABLED
     // Return the type of this mode for use by advanced failsafe

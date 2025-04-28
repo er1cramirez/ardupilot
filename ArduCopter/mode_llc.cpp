@@ -87,18 +87,18 @@ void ModeLLC::run()
             gcs().send_text(MAV_SEVERITY_INFO, "Reference calculated");
         }
 
-        gcs().send_text(MAV_SEVERITY_INFO, "Si etnrooo");
+        // gcs().send_text(MAV_SEVERITY_INFO, "Si etnrooo");
 
-        AP::logger().Write("VLCL",
-            "TimeUS,u_d.x,u_d.y,u_d.z,u_d_dot.x,u_d_dot.y,u_d_dot.z",
-            "Qffffff",
-                AP_HAL::micros64(),
-                (float)_force_target.x,
-                (float)_force_target.y,
-                (float)_force_target.z,
-                (float)_force_target_derivative.x,
-                (float)_force_target_derivative.y,
-                (float)_force_target_derivative.z);
+        // AP::logger().Write("VLCL",
+        //     "TimeUS,u_d.x,u_d.y,u_d.z,u_d_dot.x,u_d_dot.y,u_d_dot.z",
+        //     "Qffffff",
+        //         AP_HAL::micros64(),
+        //         (float)_force_target.x,
+        //         (float)_force_target.y,
+        //         (float)_force_target.z,
+        //         (float)_force_target_derivative.x,
+        //         (float)_force_target_derivative.y,
+        //         (float)_force_target_derivative.z);
         // Log the force target and its derivative
     }
     // Handle motor spool states
@@ -161,6 +161,55 @@ void ModeLLC::run()
     // pos_control->update_z_controller();
 }
 
+// bool ModeLLC::handle_message(const mavlink_message_t &msg)
+// {
+//     switch (msg.msgid) {
+//         case MAVLINK_MSG_ID_FORCE_VECTOR_TARGET: {
+//             // Verificar que el mensaje es para este sistema
+//             mavlink_force_vector_target_t packet;
+//             mavlink_msg_force_vector_target_decode(&msg, &packet);
+            
+//             if (packet.target_system != g.sysid_this_mav) {
+//                 break;
+//             }
+            
+//             // Actualizar el vector de fuerza
+//             _force_target.x = packet.force_x;
+//             _force_target.y = packet.force_y;
+//             _force_target.z = packet.force_z;
+//             _force_target_derivative.x = packet.force_derivative_x;
+//             _force_target_derivative.y = packet.force_derivative_y;
+//             _force_target_derivative.z = packet.force_derivative_z;
+
+//             gcs().send_text(MAV_SEVERITY_INFO, "Si etnrooo");
+
+//             AP::logger().Write("FRCX",
+//                 "TimeUS,u_d.x,u_d.y,u_d.z,u_d_dot.x,u_d_dot.y,u_d_dot.z",
+//                 "Qffffff",
+//                     AP_HAL::micros64(),
+//                     (float)_force_target.x,
+//                     (float)_force_target.y,
+//                     (float)_force_target.z,
+//                     (float)_force_target_derivative.x,
+//                     (float)_force_target_derivative.y,
+//                     (float)_force_target_derivative.z);
+
+//             Quaternion bodyQuaternion;
+//             ahrs.get_quat_body_to_ned(bodyQuaternion);
+//             bodyQuaternion.normalize();
+//             _force_target = bodyQuaternion * _force_target;
+//             _force_target.z += -0.03351f*9.81f;
+            
+//             _have_new_force_target = true;
+//             _last_force_target_ms = AP_HAL::millis();
+            
+//             return true;
+//         }
+//     }
+//     return false;
+// }
+
+
 bool ModeLLC::handle_message(const mavlink_message_t &msg)
 {
     switch (msg.msgid) {
@@ -181,12 +230,26 @@ bool ModeLLC::handle_message(const mavlink_message_t &msg)
             _force_target_derivative.y = packet.force_derivative_y;
             _force_target_derivative.z = packet.force_derivative_z;
 
+            AP::logger().Write("ZYXW", "TimeUS,fx,fy,fz,fxd,fyd,fzd", "Qffffff", 
+                AP_HAL::micros64(), 
+                (float)_force_target.x, 
+                (float)_force_target.y, 
+                (float)_force_target.z, 
+                (float)_force_target_derivative.x, 
+                (float)_force_target_derivative.y, 
+                (float)_force_target_derivative.z);
+
+
+            gcs().send_text(MAV_SEVERITY_INFO, "Logger");
+            gcs().send_text(MAV_SEVERITY_INFO, "Force vector target received");
+
             Quaternion bodyQuaternion;
             ahrs.get_quat_body_to_ned(bodyQuaternion);
             bodyQuaternion.normalize();
             _force_target = bodyQuaternion * _force_target;
             _force_target.z += -0.03351f*9.81f;
             
+
             _have_new_force_target = true;
             _last_force_target_ms = AP_HAL::millis();
             
