@@ -129,7 +129,7 @@ Vector3f AC_CustomControl_LLC::update()
     Vector3f rotation_vector_error(q_error.q2, q_error.q3, q_error.q4);
     
     // Get current angular velocity (gyro data)
-    Vector3f gyro = _ahrs->get_gyro();
+    Vector3f gyro = _ahrs->get_gyro_latest();
     
     // Get target angular velocity from attitude controller
     Vector3f target_ang_vel = _att_control->get_attitude_target_ang_vel();

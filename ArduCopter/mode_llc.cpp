@@ -38,7 +38,7 @@ void ModeLLC::run()
     switch (motors->get_spool_state()) {
     case AP_Motors::SpoolState::SHUT_DOWN:
         // Motors Stopped
-        attitude_control->reset_yaw_target_and_rate();
+        attitude_control->reset_yaw_target_and_rate();  
         attitude_control->reset_rate_controller_I_terms();
         pos_control->relax_z_controller(0.0f);
         break;
