@@ -1,5 +1,5 @@
 #include "Copter.h"
-#define IS_SIM false
+#define IS_SIM true
 
 bool ModeLLC::init(bool ignore_checks)
 {
@@ -141,6 +141,26 @@ void ModeLLC::run()
     // Set throttle directly to the motors
     // motors->set_throttle(0.35f);
     pos_control->update_z_controller();
+
+    AP::logger().Write("ZFTG", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
+        AP_HAL::micros64(), 
+        (bool)_have_new_force_target,
+        (float)_force_target.x, 
+        (float)_force_target.y, 
+        (float)_force_target.z, 
+        (float)_force_target_derivative.x, 
+        (float)_force_target_derivative.y, 
+        (float)_force_target_derivative.z);
+
+    AP::logger().Write("ZFRC", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
+        AP_HAL::micros64(), 
+        (bool)_have_new_force_target,
+        (float)_force_target_recvd.x, 
+        (float)_force_target_recvd.y, 
+        (float)_force_target_recvd.z, 
+        (float)_force_target_derivative_recvd.x, 
+        (float)_force_target_derivative_recvd.y, 
+        (float)_force_target_derivative_recvd.z);
 }
 
 bool ModeLLC::handle_message(const mavlink_message_t &msg)
@@ -156,29 +176,22 @@ bool ModeLLC::handle_message(const mavlink_message_t &msg)
             }
             
             // Actualizar el vector de fuerza
-            _force_target.x = packet.force_x;
-            _force_target.y = packet.force_y;
-            _force_target.z = packet.force_z;
-            _force_target_derivative.x = packet.force_derivative_x;
-            _force_target_derivative.y = packet.force_derivative_y;
-            _force_target_derivative.z = packet.force_derivative_z;
+            _force_target_recvd.x = packet.force_x;
+            _force_target_recvd.y = packet.force_y;
+            _force_target_recvd.z = packet.force_z;
+            _force_target_derivative_recvd.x = packet.force_derivative_x;
+            _force_target_derivative_recvd.y = packet.force_derivative_y;
+            _force_target_derivative_recvd.z = packet.force_derivative_z;
 
-            AP::logger().Write("ZYXW", "TimeUS,fx,fy,fz,fxd,fyd,fzd", "Qffffff", 
-                AP_HAL::micros64(), 
-                (float)_force_target.x, 
-                (float)_force_target.y, 
-                (float)_force_target.z, 
-                (float)_force_target_derivative.x, 
-                (float)_force_target_derivative.y, 
-                (float)_force_target_derivative.z);
-
-            gcs().send_text(MAV_SEVERITY_INFO, "Force vector target received");
-
+            // Convert to inertial frame
             Quaternion bodyQuaternion;
             ahrs.get_quat_body_to_ned(bodyQuaternion);
             bodyQuaternion.normalize();
-            _force_target = bodyQuaternion * _force_target;
+            // For force vector
+            _force_target = bodyQuaternion * _force_target_recvd;
             _force_target.z += -0.03351f*9.81f;
+            // For force derivative vector
+            _force_target_derivative = bodyQuaternion * _force_target_derivative_recvd;
             
             _have_new_force_target = true;
             _last_force_target_ms = AP_HAL::millis();

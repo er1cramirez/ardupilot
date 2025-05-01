@@ -66,6 +66,7 @@ AC_CustomControl_LLC::AC_CustomControl_LLC(AC_CustomControl& frontend, AP_AHRS_V
     AC_CustomControl_Backend(frontend, ahrs, att_control, motors, dt)
 {
     AP_Param::setup_object_defaults(this, var_info);
+    _dt = dt;
 }
 
 void AC_CustomControl_LLC::reset()
@@ -89,21 +90,24 @@ Vector3f AC_CustomControl_LLC::update()
 {
     // Get current attitude as quaternion
     Quaternion attitude_body;
-    // _ahrs->get_quat_body_to_ned(attitude_body);
+    Quaternion attitude_body_ned;
     _ahrs->get_body_quat(attitude_body);
+    _ahrs->get_quat_body_to_ned(attitude_body_ned);
     
     // Get target attitude from attitude controller
     Quaternion attitude_target;
     attitude_target = _att_control->get_attitude_target_quat();
 
-    
     // Calculate attitude error quaternion
     Quaternion q_error;
     attitude_target.normalize();
     attitude_body.normalize();
     calculate_attitude_error_quaternion(attitude_body, attitude_target, q_error);
+    // Only for debugging
+    Quaternion q_error_debug = attitude_target * attitude_body.inverse();
+    q_error_debug.normalize();
 
-    AP::logger().Write("XQBT", "TimeUS,q1b,q2b,q3b,q4b,q1t,q2t,q3t,q4t", "Qffffffff", 
+    AP::logger().Write("ZQBT", "TimeUS,q1b,q2b,q3b,q4b,q1t,q2t,q3t,q4t", "Qffffffff", 
                        AP_HAL::micros64(), 
                        attitude_body.q1, 
                        attitude_body.q2, 
@@ -114,13 +118,20 @@ Vector3f AC_CustomControl_LLC::update()
                        attitude_target.q3,
                        attitude_target.q4);
 
-    AP::logger().Write("XQER", "TimeUS,q1error,q2error,q3error,q4error", "Qffff", 
+    AP::logger().Write("ZQER", "TimeUS,q1error,q2error,q3error,q4error", "Qffff", 
                        AP_HAL::micros64(), 
                        q_error.q1, 
                        q_error.q2, 
                        q_error.q3, 
                        q_error.q4);
-    
+
+    AP::logger().Write("ZQDB", "TimeUS,q1deb,q2deb,q3deb,q4deb", "Qffff", 
+                        AP_HAL::micros64(), 
+                        q_error_debug.q1, 
+                        q_error_debug.q2, 
+                        q_error_debug.q3, 
+                        q_error_debug.q4);
+
     // Convert quaternion error to rotation vector (roll, pitch, yaw errors)
     // Calculate error quaternion using requested approach
     // Quaternion q_error_new = attitude_body.inverse() * attitude_target;
@@ -137,7 +148,7 @@ Vector3f AC_CustomControl_LLC::update()
     // Calculate angular velocity error
     Vector3f ang_vel_error = target_ang_vel - gyro;
 
-    AP::logger().Write("XOME", "TimeUS,wx,wy,wz,wxt,wyt,wzt", "Qffffff", 
+    AP::logger().Write("ZOME", "TimeUS,wx,wy,wz,wxt,wyt,wzt", "Qffffff", 
         AP_HAL::micros64(), 
         gyro.x,
         gyro.y,
@@ -146,7 +157,7 @@ Vector3f AC_CustomControl_LLC::update()
         target_ang_vel.y,
         target_ang_vel.z);
 
-    AP::logger().Write("XOER", "TimeUS,ex,ey,ez", "Qfff", 
+    AP::logger().Write("ZOER", "TimeUS,ex,ey,ez", "Qfff", 
         AP_HAL::micros64(), 
         rotation_vector_error.x,
         rotation_vector_error.y,

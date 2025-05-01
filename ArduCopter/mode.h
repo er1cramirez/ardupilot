@@ -1685,14 +1685,18 @@ private:
     Quaternion refQuaternion;
     Vector3f refAngularVelocity;
     float refThrottle;
+    float _dt;
     const float HOVER_THROTTLE = 0.35f; // Adjust this based on your vehicle
     
     Vector3f _position, _velocity, _acceleration; // position, velocity and acceleration in intertial frame
-    Vector3f _force_target; // target force in body frame
-    Vector3f _force_target_derivative; // target force derivative in body frame
+    Vector3f _force_target_recvd = {0.0f, 0.0f, 0.0f}; // target force in body frame
+    Vector3f _force_target = {0.0f, 0.0f, 0.0f}; // target force in inertial frame
+    Vector3f _force_target_derivative_recvd = {0.0f, 0.0f, 0.0f}; // target force derivative in body frame
+    Vector3f _force_target_derivative = {0.0f, 0.0f, 0.0f}; // target force derivative in inertial frame
     bool _have_new_force_target = false; // true if we have a new force target
     bool _return_home = true; // true if we are returning home
     uint32_t _last_force_target_ms; // time of last force target update
+
     bool handle_message(const mavlink_message_t &msg) override; // handle messages from companion computer
     void calculateVirtualMap(const Vector3f& u_d, const Vector3f& u_dot_d, 
         float psi_d, float psi_dot_d,

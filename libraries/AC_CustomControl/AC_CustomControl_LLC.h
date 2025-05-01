@@ -31,6 +31,7 @@ private:
     AP_Float _kd_pitch;
     AP_Float _kd_yaw;
     AP_Float _throttle_hover;
+    float _dt;
     
     // Quaternion math helper
     void calculate_attitude_error_quaternion(const Quaternion &attitude_body, 
