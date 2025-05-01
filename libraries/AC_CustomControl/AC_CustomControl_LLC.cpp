@@ -80,7 +80,8 @@ void AC_CustomControl_LLC::calculate_attitude_error_quaternion(const Quaternion 
 {
     // Calculate the error quaternion between current and target attitude
     // q_error = q_target * q_body^(-1)
-    error_quaternion = attitude_target * attitude_body.inverse();
+    // error_quaternion = attitude_target * attitude_body.inverse();
+    error_quaternion = attitude_target.inverse() * attitude_body;
     
     // Ensure shortest rotation path
     error_quaternion.normalize();
@@ -107,6 +108,23 @@ Vector3f AC_CustomControl_LLC::update()
     Quaternion q_error_debug = attitude_target * attitude_body.inverse();
     q_error_debug.normalize();
 
+    
+    // Convert quaternion error to rotation vector (roll, pitch, yaw errors)
+    // Calculate error quaternion using requested approach
+    // Quaternion q_error_new = attitude_body.inverse() * attitude_target;
+    
+    // Extract the vectorial part as the error
+    Vector3f rotation_vector_error(q_error.q2, q_error.q3, q_error.q4);
+    
+    // Get current angular velocity (gyro data)
+    Vector3f gyro = _ahrs->get_gyro_latest();
+    
+    // Get target angular velocity from attitude controller
+    Vector3f target_ang_vel = _att_control->get_attitude_target_ang_vel();
+    
+    // Calculate angular velocity error
+    Vector3f ang_vel_error = gyro - target_ang_vel;
+
     AP::logger().Write("ZQBT", "TimeUS,q1b,q2b,q3b,q4b,q1t,q2t,q3t,q4t", "Qffffffff", 
                        AP_HAL::micros64(), 
                        attitude_body.q1, 
@@ -132,22 +150,6 @@ Vector3f AC_CustomControl_LLC::update()
                         q_error_debug.q3, 
                         q_error_debug.q4);
 
-    // Convert quaternion error to rotation vector (roll, pitch, yaw errors)
-    // Calculate error quaternion using requested approach
-    // Quaternion q_error_new = attitude_body.inverse() * attitude_target;
-    
-    // Extract the vectorial part as the error
-    Vector3f rotation_vector_error(q_error.q2, q_error.q3, q_error.q4);
-    
-    // Get current angular velocity (gyro data)
-    Vector3f gyro = _ahrs->get_gyro_latest();
-    
-    // Get target angular velocity from attitude controller
-    Vector3f target_ang_vel = _att_control->get_attitude_target_ang_vel();
-    
-    // Calculate angular velocity error
-    Vector3f ang_vel_error = target_ang_vel - gyro;
-
     AP::logger().Write("ZOME", "TimeUS,wx,wy,wz,wxt,wyt,wzt", "Qffffff", 
         AP_HAL::micros64(), 
         gyro.x,
@@ -165,9 +167,9 @@ Vector3f AC_CustomControl_LLC::update()
     
     // Apply PD controller gains
     Vector3f torques;
-    torques.x = _kp_roll * rotation_vector_error.x + _kd_roll * ang_vel_error.x;
-    torques.y = _kp_pitch * rotation_vector_error.y + _kd_pitch * ang_vel_error.y;
-    torques.z = _kp_yaw * rotation_vector_error.z + _kd_yaw * ang_vel_error.z;
+    torques.x = - _kp_roll * rotation_vector_error.x - _kd_roll * ang_vel_error.x;
+    torques.y = - _kp_pitch * rotation_vector_error.y - _kd_pitch * ang_vel_error.y;
+    torques.z = - _kp_yaw * rotation_vector_error.z - _kd_yaw * ang_vel_error.z;
     
     // Set thrust from the throttle input (this comes from throttle control)
     // This uses the existing throttle system in the vehicle
