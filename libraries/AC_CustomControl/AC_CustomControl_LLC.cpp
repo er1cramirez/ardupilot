@@ -1,7 +1,6 @@
 #include "AC_CustomControl_config.h"
 
-// #if AP_CUSTOMCONTROL_ENABLED
-#if 1
+#if AP_CUSTOMCONTROL_ENABLED
 
 #include "AC_CustomControl_LLC.h"
 #include <AP_Math/AP_Math.h>
