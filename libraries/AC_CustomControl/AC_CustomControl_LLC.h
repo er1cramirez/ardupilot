@@ -30,7 +30,14 @@ private:
     AP_Float _kd_roll;
     AP_Float _kd_pitch;
     AP_Float _kd_yaw;
+    AP_Float _ki_roll;
+    AP_Float _ki_pitch;
+    AP_Float _ki_yaw;
     AP_Float _throttle_hover;
+    AP_Float _integrator_windup;
+    float _integrator_roll = 0.0f;
+    float _integrator_pitch = 0.0f;
+    float _integrator_yaw = 0.0f;
     float _dt;
     
     // Quaternion math helper
