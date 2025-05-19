@@ -51,9 +51,9 @@ void ModeLLC::run()
         0.0f, -0.5f, 0.0f,
         0.0f, 0.0f, -0.5f);
 
-    Matrix3f kd1(-0.35f, 0.0f, 0.0f,
-        0.0f, -0.35, 0.0f,
-        0.0f, 0.0f, -0.35f);
+    Matrix3f kd1(-0.3f, 0.0f, 0.0f,
+        0.0f, -0.3, 0.0f,
+        0.0f, 0.0f, -0.3f);
 
     Vector3f u_d(0.0f, 0.0f, 0.0f);
     Vector3f u_d_dot(0.0f, 0.0f, 0.0f);
@@ -175,7 +175,18 @@ bool ModeLLC::handle_message(const mavlink_message_t &msg)
             if (packet.target_system != g.sysid_this_mav) {
                 break;
             }
-            
+            // custom log to check the mavlink com performance
+            // I've added the sender time and msg sequence number to the message
+            // Add the local time to the log to check the latency
+            AP::logger().Write("ZCOM", "TimeUS,seq,fx,fy,fz,fxd,fyd,fzd", "QQffffff", 
+                AP_HAL::micros64(),// Local timestamp
+                packet.msg_seq,
+                (float)packet.force_x, 
+                (float)packet.force_y, 
+                (float)packet.force_z, 
+                (float)packet.force_derivative_x, 
+                (float)packet.force_derivative_y, 
+                (float)packet.force_derivative_z);
             // Actualizar el vector de fuerza
             _force_target_recvd.x = packet.force_x;
             _force_target_recvd.y = packet.force_y;
