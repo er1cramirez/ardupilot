@@ -83,9 +83,9 @@ void ModeLLC::run()
     Vector3f x_ddot(0.0f, 0.0f, 0.0f);
 
     // Control gains
-    Matrix3f kp1(-0.5f, 0.0f, 0.0f,
-        0.0f, -0.5f, 0.0f,
-        0.0f, 0.0f, -0.5f);
+    Matrix3f kp1(-0.3f, 0.0f, 0.0f,
+        0.0f, -0.3f, 0.0f,
+        0.0f, 0.0f, -0.3f);
 
     Matrix3f kd1(-0.25f, 0.0f, 0.0f,
         0.0f, -0.25, 0.0f,
