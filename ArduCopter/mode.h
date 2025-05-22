@@ -1671,6 +1671,7 @@ public:
     using Mode::Mode;
     Number mode_number() const override { return Number::LLC; }
     bool init(bool ignore_checks) override;
+    void exit() override;
     void run() override;
 
     bool requires_GPS() const override { return false; }
@@ -1680,6 +1681,7 @@ public:
     bool allows_save_trim() const override { return true; }
     bool allows_autotune() const override { return true; }
     bool allows_flip() const override { return true; }
+    
 
 private:
     Quaternion refQuaternion;

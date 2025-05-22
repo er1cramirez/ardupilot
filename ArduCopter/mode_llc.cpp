@@ -4,6 +4,22 @@
 bool ModeLLC::init(bool ignore_checks)
 {
     // Initialize position controller for Z axis if not already active
+    // if (!pos_control->is_active_z()) {
+    //     pos_control->init_z_controller();
+    // }
+
+    // // Set vertical speed and acceleration limits
+    // pos_control->set_max_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
+    // pos_control->set_correction_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
+
+    _return_home = true;
+    _have_new_force_target = false;
+
+    return true;
+}
+
+void ModeLLC::exit()
+{
     if (!pos_control->is_active_z()) {
         pos_control->init_z_controller();
     }
@@ -11,11 +27,8 @@ bool ModeLLC::init(bool ignore_checks)
     // Set vertical speed and acceleration limits
     pos_control->set_max_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
     pos_control->set_correction_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
-
-    _return_home = true;
-    _have_new_force_target = false;
-
-    return true;
+    pos_control->set_alt_target_with_slew(200.0f);
+    pos_control->update_z_controller();
 }
 
 void ModeLLC::run()
@@ -24,7 +37,7 @@ void ModeLLC::run()
     float psi_d_dot = 0.0f;
     
 #if IS_SIM
-    float x_ref = 0.0f, y_ref = 0.0f, z_ref = 3.0f;
+    float x_ref = 0.0f, y_ref = 0.0f, z_ref = 2.0f;
     float x_dot_ref = 0.0f, y_dot_ref = 0.0f, z_dot_ref = 0.0f;
     float x_ddot_ref = 0.0f, y_ddot_ref = 0.0f, z_ddot_ref = 0.0f;
     float x_dddot_ref = 0.0f, y_dddot_ref = 0.0f, z_dddot_ref = 0.0f;
@@ -128,7 +141,8 @@ void ModeLLC::run()
 #endif
         // Flying - run quaternion controller
         attitude_control->input_quaternion(refQuaternion, refAngularVelocity);
-        pos_control->set_alt_target_with_slew(200.0f);
+        // pos_control->set_alt_target_with_slew(200.0f);
+        motors->set_throttle(refThrottle);
         break;
 
     case AP_Motors::SpoolState::SPOOLING_UP:
@@ -140,7 +154,7 @@ void ModeLLC::run()
     // attitude_control->set_throttle_out(T, true, g.throttle_filt);
     // Set throttle directly to the motors
     // motors->set_throttle(0.35f);
-    pos_control->update_z_controller();
+    // pos_control->update_z_controller();
 
     AP::logger().Write("ZFTG", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
         AP_HAL::micros64(), 
