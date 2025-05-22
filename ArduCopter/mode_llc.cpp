@@ -142,7 +142,7 @@ void ModeLLC::run()
     // motors->set_throttle(0.35f);
     pos_control->update_z_controller();
 
-    AP::logger().Write("ZFTG", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
+    AP::logger().Write("YFTG", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
         AP_HAL::micros64(), 
         (bool)_have_new_force_target,
         (float)_force_target.x, 
@@ -152,7 +152,7 @@ void ModeLLC::run()
         (float)_force_target_derivative.y, 
         (float)_force_target_derivative.z);
 
-    AP::logger().Write("ZFRC", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
+    AP::logger().Write("YFRC", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
         AP_HAL::micros64(), 
         (bool)_have_new_force_target,
         (float)_force_target_recvd.x, 
@@ -167,21 +167,21 @@ void ModeLLC::run()
     bodyQuaternion.normalize();
     qError = refQuaternion.inverse() * bodyQuaternion;
 
-    AP::logger().Write("ZQBD", "TimeUS,q1,q2,q3,q4", "Qffff", 
+    AP::logger().Write("YQBD", "TimeUS,q1,q2,q3,q4", "Qffff", 
         AP_HAL::micros64(), 
         bodyQuaternion.q1, 
         bodyQuaternion.q2, 
         bodyQuaternion.q3, 
         bodyQuaternion.q4);
 
-    AP::logger().Write("ZQRF", "TimeUS,q1,q2,q3,q4", "Qffff", 
+    AP::logger().Write("YQRF", "TimeUS,q1,q2,q3,q4", "Qffff", 
         AP_HAL::micros64(), 
         refQuaternion.q1, 
         refQuaternion.q2, 
         refQuaternion.q3, 
         refQuaternion.q4);
 
-    AP::logger().Write("ZQER", "TimeUS,q1,q2,q3,q4", "Qffff",
+    AP::logger().Write("YQER", "TimeUS,q1,q2,q3,q4", "Qffff",
         AP_HAL::micros64(), 
         qError.q1, 
         qError.q2, 
@@ -190,19 +190,19 @@ void ModeLLC::run()
 
     Vector3f angularVelocity = ahrs.get_gyro_latest();
     Vector3f angularError = angularVelocity - refAngularVelocity;
-    AP::logger().Write("ZWBD", "TimeUS,wx,wy,wz", "Qfff", 
+    AP::logger().Write("YWBD", "TimeUS,wx,wy,wz", "Qfff", 
         AP_HAL::micros64(), 
         angularVelocity.x, 
         angularVelocity.y, 
         angularVelocity.z);
 
-    AP::logger().Write("ZWRF", "TimeUS,wx,wy,wz", "Qfff", 
+    AP::logger().Write("YWRF", "TimeUS,wx,wy,wz", "Qfff", 
         AP_HAL::micros64(), 
         refAngularVelocity.x, 
         refAngularVelocity.y, 
         refAngularVelocity.z);
 
-    AP::logger().Write("ZWER", "TimeUS,wx,wy,wz", "Qfff", 
+    AP::logger().Write("YWER", "TimeUS,wx,wy,wz", "Qfff", 
         AP_HAL::micros64(), 
         angularError.x, 
         angularError.y, 
