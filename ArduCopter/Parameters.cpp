@@ -720,6 +720,12 @@ const AP_Param::Info Copter::var_info[] = {
     GOBJECT(custom_control, "CC", AC_CustomControl),
 #endif
 
+#if MODE_LLC_ENABLED
+    // @Group: LLC_
+    // @Path: ../ArduCopter/mode_llc.cpp
+    GOBJECT(mode_llc, "LLC_", ModeLLC),
+#endif
+
     // @Group:
     // @Path: Parameters.cpp
     GOBJECT(g2, "",  ParametersG2),

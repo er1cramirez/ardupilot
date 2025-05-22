@@ -1681,6 +1681,8 @@ public:
     bool allows_save_trim() const override { return true; }
     bool allows_autotune() const override { return true; }
     bool allows_flip() const override { return true; }
+
+    static const struct AP_Param::GroupInfo var_info[];
     
 
 private:
@@ -1688,6 +1690,8 @@ private:
     Vector3f refAngularVelocity;
     float refThrottle;
     float _dt;
+    AP_Float _hover_thr;
+    AP_Int8 _tune_hover_thr;
     const float HOVER_THROTTLE = 0.35f; // Adjust this based on your vehicle
     
     Vector3f _position, _velocity, _acceleration; // position, velocity and acceleration in intertial frame

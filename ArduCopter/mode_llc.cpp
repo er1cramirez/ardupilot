@@ -1,5 +1,27 @@
 #include "Copter.h"
+// #include <iostream>
 #define IS_SIM true
+
+
+const AP_Param::GroupInfo ModeLLC::var_info[] = {
+    // @Param: HVR_THR
+    // @DisplayName: Throttle for hover
+    // @Description: Throttle for hover
+    // @Range: 0.0 10.0
+    // @User: Standard
+    AP_GROUPINFO("HVR_THR", 1, ModeLLC, _hover_thr, 0.3287331f),
+    
+
+    // @Param: TUNE_HVR_THR
+    // DisplayName: Activate/deactivate tunning the throttle compensation
+    // Description: Activate/deactivate tunning the throttle compensation
+    // Range: 0 1
+    // User: Standard
+    AP_GROUPINFO("TUNE_HVR_THR", 2, ModeLLC, _tune_hover_thr, 0),
+
+    AP_GROUPEND
+};
+
 
 bool ModeLLC::init(bool ignore_checks)
 {
@@ -49,8 +71,10 @@ void ModeLLC::run()
     // float psi_d = 3.1416f/4.0f;
 
     // Parameters
-    float mass = 0.03351f;
+    // float gravity = 9.81f;
+    // float mass = 0.03351f;
     float gravity = 9.81f;
+    float mass = (float) _hover_thr / (float) gravity;
     Vector3f e_z(0.0f, 0.0f, 1.0f);
 
     // Drone data initialization
@@ -93,6 +117,8 @@ void ModeLLC::run()
         }
     }
 #endif
+
+    // std::cout << "hover: " << _hover_thr << std::endl;
 
  
     // Handle motor spool states
@@ -142,6 +168,9 @@ void ModeLLC::run()
         // Flying - run quaternion controller
         attitude_control->input_quaternion(refQuaternion, refAngularVelocity);
         // pos_control->set_alt_target_with_slew(200.0f);
+        if ((bool) _tune_hover_thr)
+            refThrottle = (float) _hover_thr;
+
         motors->set_throttle(refThrottle);
         break;
 
@@ -156,7 +185,7 @@ void ModeLLC::run()
     // motors->set_throttle(0.35f);
     // pos_control->update_z_controller();
 
-    AP::logger().Write("ZFTG", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
+    AP::logger().Write("YFTG", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
         AP_HAL::micros64(), 
         (bool)_have_new_force_target,
         (float)_force_target.x, 
@@ -166,7 +195,7 @@ void ModeLLC::run()
         (float)_force_target_derivative.y, 
         (float)_force_target_derivative.z);
 
-    AP::logger().Write("ZFRC", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
+    AP::logger().Write("YFRC", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
         AP_HAL::micros64(), 
         (bool)_have_new_force_target,
         (float)_force_target_recvd.x, 
@@ -181,21 +210,21 @@ void ModeLLC::run()
     bodyQuaternion.normalize();
     qError = refQuaternion.inverse() * bodyQuaternion;
 
-    AP::logger().Write("ZQBD", "TimeUS,q1,q2,q3,q4", "Qffff", 
+    AP::logger().Write("YQBD", "TimeUS,q1,q2,q3,q4", "Qffff", 
         AP_HAL::micros64(), 
         bodyQuaternion.q1, 
         bodyQuaternion.q2, 
         bodyQuaternion.q3, 
         bodyQuaternion.q4);
 
-    AP::logger().Write("ZQRF", "TimeUS,q1,q2,q3,q4", "Qffff", 
+    AP::logger().Write("YQRF", "TimeUS,q1,q2,q3,q4", "Qffff", 
         AP_HAL::micros64(), 
         refQuaternion.q1, 
         refQuaternion.q2, 
         refQuaternion.q3, 
         refQuaternion.q4);
 
-    AP::logger().Write("ZQER", "TimeUS,q1,q2,q3,q4", "Qffff",
+    AP::logger().Write("YQER", "TimeUS,q1,q2,q3,q4", "Qffff",
         AP_HAL::micros64(), 
         qError.q1, 
         qError.q2, 
@@ -204,19 +233,19 @@ void ModeLLC::run()
 
     Vector3f angularVelocity = ahrs.get_gyro_latest();
     Vector3f angularError = angularVelocity - refAngularVelocity;
-    AP::logger().Write("ZWBD", "TimeUS,wx,wy,wz", "Qfff", 
+    AP::logger().Write("YWBD", "TimeUS,wx,wy,wz", "Qfff", 
         AP_HAL::micros64(), 
         angularVelocity.x, 
         angularVelocity.y, 
         angularVelocity.z);
 
-    AP::logger().Write("ZWRF", "TimeUS,wx,wy,wz", "Qfff", 
+    AP::logger().Write("YWRF", "TimeUS,wx,wy,wz", "Qfff", 
         AP_HAL::micros64(), 
         refAngularVelocity.x, 
         refAngularVelocity.y, 
         refAngularVelocity.z);
 
-    AP::logger().Write("ZWER", "TimeUS,wx,wy,wz", "Qfff", 
+    AP::logger().Write("YWER", "TimeUS,wx,wy,wz", "Qfff", 
         AP_HAL::micros64(), 
         angularError.x, 
         angularError.y, 
