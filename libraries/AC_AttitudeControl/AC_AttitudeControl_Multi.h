@@ -14,7 +14,7 @@
   # define AC_ATC_MULTI_RATE_RP_I           0.135f
 #endif
 #ifndef AC_ATC_MULTI_RATE_RP_D
-  # define AC_ATC_MULTI_RATE_RP_D           0.0036f
+  # define AC_ATC_MULTI_RATE_RP_D           0.0038f
 #endif
 #ifndef AC_ATC_MULTI_RATE_RP_IMAX
  # define AC_ATC_MULTI_RATE_RP_IMAX         0.5f

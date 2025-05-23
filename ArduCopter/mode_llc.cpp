@@ -14,6 +14,7 @@ bool ModeLLC::init(bool ignore_checks)
 
     _return_home = true;
     _have_new_force_target = false;
+    gcs().send_text(MAV_SEVERITY_INFO, "Sys ID: %d", (int)g.sysid_this_mav);
 
     return true;
 }
@@ -50,9 +51,9 @@ void ModeLLC::run()
         0.0f, -0.5f, 0.0f,
         0.0f, 0.0f, -0.5f);
 
-    Matrix3f kd1(-0.25f, 0.0f, 0.0f,
-        0.0f, -0.25, 0.0f,
-        0.0f, 0.0f, -0.25f);
+    Matrix3f kd1(-0.35f, 0.0f, 0.0f,
+        0.0f, -0.35, 0.0f,
+        0.0f, 0.0f, -0.35f);
 
     Vector3f u_d(0.0f, 0.0f, 0.0f);
     Vector3f u_d_dot(0.0f, 0.0f, 0.0f);
