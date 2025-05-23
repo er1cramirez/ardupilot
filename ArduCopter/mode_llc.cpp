@@ -1,6 +1,6 @@
 #include "Copter.h"
 // #include <iostream>
-#define IS_SIM true
+#define IS_SIM false
 
 
 const AP_Param::GroupInfo ModeLLC::var_info[] = {
