@@ -143,7 +143,7 @@ void ModeLLC::run()
     // motors->set_throttle(0.35f);
     pos_control->update_z_controller();
 
-    AP::logger().Write("ZFTG", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
+    AP::logger().Write("YFTG", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
         AP_HAL::micros64(), 
         (bool)_have_new_force_target,
         (float)_force_target.x, 
@@ -153,7 +153,7 @@ void ModeLLC::run()
         (float)_force_target_derivative.y, 
         (float)_force_target_derivative.z);
 
-    AP::logger().Write("ZFRC", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
+    AP::logger().Write("YFRC", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
         AP_HAL::micros64(), 
         (bool)_have_new_force_target,
         (float)_force_target_recvd.x, 
@@ -162,6 +162,53 @@ void ModeLLC::run()
         (float)_force_target_derivative_recvd.x, 
         (float)_force_target_derivative_recvd.y, 
         (float)_force_target_derivative_recvd.z);
+
+    Quaternion bodyQuaternion, qError;
+    ahrs.get_quat_body_to_ned(bodyQuaternion);
+    bodyQuaternion.normalize();
+    qError = refQuaternion.inverse() * bodyQuaternion;
+
+    AP::logger().Write("YQBD", "TimeUS,q1,q2,q3,q4", "Qffff", 
+        AP_HAL::micros64(), 
+        bodyQuaternion.q1, 
+        bodyQuaternion.q2, 
+        bodyQuaternion.q3, 
+        bodyQuaternion.q4);
+
+    AP::logger().Write("YQRF", "TimeUS,q1,q2,q3,q4", "Qffff", 
+        AP_HAL::micros64(), 
+        refQuaternion.q1, 
+        refQuaternion.q2, 
+        refQuaternion.q3, 
+        refQuaternion.q4);
+
+    AP::logger().Write("YQER", "TimeUS,q1,q2,q3,q4", "Qffff",
+        AP_HAL::micros64(), 
+        qError.q1, 
+        qError.q2, 
+        qError.q3, 
+        qError.q4);
+
+    Vector3f angularVelocity = ahrs.get_gyro_latest();
+    Vector3f angularError = angularVelocity - refAngularVelocity;
+    AP::logger().Write("YWBD", "TimeUS,wx,wy,wz", "Qfff", 
+        AP_HAL::micros64(), 
+        angularVelocity.x, 
+        angularVelocity.y, 
+        angularVelocity.z);
+
+    AP::logger().Write("YWRF", "TimeUS,wx,wy,wz", "Qfff", 
+        AP_HAL::micros64(), 
+        refAngularVelocity.x, 
+        refAngularVelocity.y, 
+        refAngularVelocity.z);
+
+    AP::logger().Write("YWER", "TimeUS,wx,wy,wz", "Qfff", 
+        AP_HAL::micros64(), 
+        angularError.x, 
+        angularError.y, 
+        angularError.z);
+    
 }
 
 bool ModeLLC::handle_message(const mavlink_message_t &msg)
@@ -291,3 +338,32 @@ void ModeLLC::calculateVirtualMap(const Vector3f& u_d, const Vector3f& u_dot_d,
 
     refThrottle = thrust;
 }
+
+
+// void ModeLLC::calculateVirtualMap(const Vector3f& u_d, const Vector3f& u_dot_d, 
+//     float psi_d, float psi_dot_d,
+//     Quaternion& refQuat, Vector3f& refOmega) {
+    
+//     Vector3f u_d_norm = u_d.normalized();
+//     Vector3f u_d_dot_norm = u_dot_d / u_d.length() - u_d * (u_d * u_dot_d) / powf(u_d.length(), 3.0f);  
+
+//     Quaternion q_dxy(1.0f/2.0f * sqrtf(-2*u_d_norm.z + 2),
+//     u_d_norm.y / sqrtf(-2*u_d_norm.z + 2),
+//     -u_d_norm.x / sqrtf(-2*u_d_norm.z + 2),
+//     0.0f);
+
+//     Quaternion q_dz(cosf(psi_d/2.0f), 
+//     0.0f, 
+//     0.0f, 
+//     sinf(psi_d/2.0f));
+    
+//     refQuat = q_dxy * q_dz;
+//     refQuat.normalize();
+
+//     refOmega = {-sinf(psi_d)*u_d_dot_norm.x + cosf(psi_d)*u_d_dot_norm.y + u_d_dot_norm.z*(sinf(psi_d)*u_d_norm.x - cosf(psi_d)*u_d_norm.y)/(u_d_norm.z - 1.0f),
+//         -cosf(psi_d)*u_d_dot_norm.x - sinf(psi_d)*u_d_dot_norm.y + u_d_dot_norm.z*(cosf(psi_d)*u_d_norm.x + sinf(psi_d)*u_d_norm.y)/(u_d_norm.z - 1.0f),
+//         psi_dot_d + (u_d_norm.x*u_d_dot_norm.y - u_d_norm.y*u_d_dot_norm.x)/(u_d_norm.z - 1.0f)};
+
+//     refThrottle = u_d.length();
+// }
+
