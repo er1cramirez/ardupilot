@@ -129,7 +129,7 @@ void ModeLLC::run()
 #endif
         // Flying - run quaternion controller
         attitude_control->input_quaternion(refQuaternion, refAngularVelocity);
-        pos_control->set_alt_target_with_slew(200.0f);
+        pos_control->set_alt_target_with_slew(100.0f);
         break;
 
     case AP_Motors::SpoolState::SPOOLING_UP:
@@ -200,8 +200,8 @@ bool ModeLLC::handle_message(const mavlink_message_t &msg)
             ahrs.get_quat_body_to_ned(bodyQuaternion);
             bodyQuaternion.normalize();
             // For force vector
-            _force_target = bodyQuaternion * _force_target_recvd;
-            _force_target.z += -0.03351f*9.81f;
+            _force_target = bodyQuaternion * _force_target_recvd;//Change to inertial frame
+            _force_target.z += -0.185f;// Adjust for gravity offset, this is a constant value for the force vector in inertial frame
             // For force derivative vector
             _force_target_derivative = bodyQuaternion * _force_target_derivative_recvd;
             
