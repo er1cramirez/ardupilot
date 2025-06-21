@@ -3,6 +3,8 @@
 #include "Copter.h"
 #include <AP_Math/chirp.h>
 #include <AP_ExternalControl/AP_ExternalControl_config.h> // TODO why is this needed if Copter.h includes this
+#include <iostream>
+
 
 #if AP_COPTER_ADVANCED_FAILSAFE_ENABLED
 #include "afs_copter.h"
@@ -1695,12 +1697,20 @@ private:
     const float HOVER_THROTTLE = 0.35f; // Adjust this based on your vehicle
     float mass;
     const float gravity = 9.81f; // m/s^2, gravitational acceleration
+    float init_time;
+    std::string att_filename = "att_data.txt";
+    std::string pos_filename = "pos_data.txt";
+    bool new_file;
     
+    Vector3f _ez = {0.0f, 0.0f, 1.0f};
+    Vector3f _ud = {0.0f, 0.0f, 0.0f};
     Vector3f _position, _velocity, _acceleration; // position, velocity and acceleration in intertial frame
     Vector3f _force_target_recvd = {0.0f, 0.0f, 0.0f}; // target force in body frame
     Vector3f _force_target = {0.0f, 0.0f, 0.0f}; // target force in inertial frame
     Vector3f _force_target_derivative_recvd = {0.0f, 0.0f, 0.0f}; // target force derivative in body frame
     Vector3f _force_target_derivative = {0.0f, 0.0f, 0.0f}; // target force derivative in inertial frame
+    Vector3f _ud_norm = {0.0f, 0.0f, 0.0f}; // deisred thrust vector direction
+    Vector3f _zb = {0.0f, 0.0f, 0.0f};  // real thrust vector direction
     bool _have_new_force_target = false; // true if we have a new force target
     bool _return_home = true; // true if we are returning home
     uint32_t _last_force_target_ms; // time of last force target update

@@ -1,6 +1,11 @@
 #include "Copter.h"
-// #include <iostream>
 #define IS_SIM true
+
+#if IS_SIM
+#include <iostream>
+#include <fstream>
+#include <ctime>
+#endif
 
 
 const AP_Param::GroupInfo ModeLLC::var_info[] = {
@@ -33,7 +38,8 @@ bool ModeLLC::init(bool ignore_checks)
     // // Set vertical speed and acceleration limits
     // pos_control->set_max_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
     // pos_control->set_correction_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
-
+    init_time = AP_HAL::millis() / 1E3;
+    new_file = true;
     _return_home = true;
     _have_new_force_target = false;
 
@@ -57,36 +63,69 @@ void ModeLLC::run()
 {
     float psi_d = 0.0f;
     float psi_d_dot = 0.0f;
+    float t = AP_HAL::millis() / 1E3 - init_time;
     mass = (float) _hover_thr / (float) gravity;
     
 #if IS_SIM
-    float x_ref = 0.0f, y_ref = 0.0f, z_ref = 2.0f;
+    float x_ref = 0.0f, y_ref = 0.0f, z_ref = 10.0f;
     float x_dot_ref = 0.0f, y_dot_ref = 0.0f, z_dot_ref = 0.0f;
     float x_ddot_ref = 0.0f, y_ddot_ref = 0.0f, z_ddot_ref = 0.0f;
     float x_dddot_ref = 0.0f, y_dddot_ref = 0.0f, z_dddot_ref = 0.0f;
+
+    // Infinity Symbol Path
+    float a = 20.0f; // semi-major axis
+    float bp = 10.0f; // semi-minor axis
+    float w = 0.2f; // angular frequency
+
+    x_ref = a * sinf(w * t);
+    y_ref = bp/2.0f * sinf(2.0f * w * t);
+    z_ref = 10.0f;
+
+    x_dot_ref = a * w * cosf(w * t);
+    y_dot_ref = bp * w * cosf(2.0f * w * t);
+
+    x_ddot_ref = -a * w * w * sinf(w * t);
+    y_ddot_ref = -2 * bp * w * w * sinf(2.0f * w * t);
+
+    x_dddot_ref = -a * w * w * w * cosf(w * t);
+    y_dddot_ref = -4 * bp * w * w * w * cosf(2.0f * w * t);
+
+
+    // Height path
+    float h = 4.0f;
+    float w2 = 0.6f;
+    z_ref = 10.0f + h * sinf(w2 * t);
+    z_dot_ref = h * w2 * cosf(w2 * t);
+    z_ddot_ref = -h * w2 * w2 * sinf(w2 * t);
+    z_dddot_ref = -h * w2 * w2 * w2 * cosf(w2 * t);
 
     Vector3f x_d(x_ref, y_ref, -z_ref);
     Vector3f x_d_dot(x_dot_ref, y_dot_ref, -z_dot_ref);
     Vector3f x_d_ddot(x_ddot_ref, y_ddot_ref, -z_ddot_ref);
     Vector3f x_d_dddot(x_dddot_ref, y_dddot_ref, -z_dddot_ref);
-    // float psi_d = 3.1416f/4.0f;
 
     // Parameters
-    Vector3f e_z(0.0f, 0.0f, 1.0f);
-
     // Drone data initialization
     Vector3f x(0.0f, 0.0f, 0.0f);
     Vector3f x_dot(0.0f, 0.0f, 0.0f);
     Vector3f x_ddot(0.0f, 0.0f, 0.0f);
 
     // Control gains
-    Matrix3f kp1(-0.5f, 0.0f, 0.0f,
-        0.0f, -0.5f, 0.0f,
-        0.0f, 0.0f, -0.5f);
+    // Matrix3f kp1(-0.5f, 0.0f, 0.0f,
+    //     0.0f, -0.5f, 0.0f,
+    //     0.0f, 0.0f, -0.5f);
 
-    Matrix3f kd1(-0.25f, 0.0f, 0.0f,
-        0.0f, -0.25, 0.0f,
-        0.0f, 0.0f, -0.25f);
+    // Matrix3f kd1(-0.25f, 0.0f, 0.0f,
+    //     0.0f, -0.25, 0.0f,
+    //     0.0f, 0.0f, -0.25f);
+
+    Matrix3f kp1(-0.5f, 0.0f, 0.0f,
+                0.0f, -0.5f, 0.0f,
+                0.0f, 0.0f, -0.5f);
+
+    Matrix3f kd1(-0.35f, 0.0f, 0.0f,
+                0.0f, -0.35f, 0.0f,
+                0.0f, 0.0f, -0.35f);
 
     Vector3f u_d(0.0f, 0.0f, 0.0f);
     Vector3f u_d_dot(0.0f, 0.0f, 0.0f);
@@ -100,7 +139,7 @@ void ModeLLC::run()
         {
             x = _position;
             x_dot = _velocity;
-            x_ddot = _acceleration + e_z*gravity;
+            x_ddot = _acceleration + _ez*gravity;
     
             // Errors
             Vector3f xe = x - x_d;
@@ -108,8 +147,9 @@ void ModeLLC::run()
             Vector3f xe_ddot = x_ddot - x_d_ddot;
             
             // Control law
-            u_d = kp1 * xe + kd1 * xe_dot - e_z * mass * gravity + x_d_ddot * mass;
+            u_d = kp1 * xe + kd1 * xe_dot - _ez * mass * gravity + x_d_ddot * mass;
             u_d_dot = kp1 * xe_dot + kd1 * xe_ddot + x_d_dddot * mass;
+            _ud = u_d;
             gcs().send_text(MAV_SEVERITY_INFO, "Reference calculated");
         }
     }
@@ -247,6 +287,66 @@ void ModeLLC::run()
         angularError.x, 
         angularError.y, 
         angularError.z);
+
+        if(this->new_file) {
+        // Time stamp
+        this->new_file = false;  
+        auto td = std::time(nullptr);
+        auto tm = *std::localtime(&td);
+        char timestamp[20];
+        std::strftime(timestamp, sizeof(timestamp), "%m-%d_%H-%M-%S", &tm);
+
+        this->att_filename = "/home/olara/Desktop/plots_ap/attitude_data/attitude_data_" + std::string(timestamp) + ".txt";
+        this->pos_filename = "/home/olara/Desktop/plots_ap/position_data/position_data_" + std::string(timestamp) + ".txt";
+    }
+
+    // Open file to save q_d, q_body, q_error along with time
+    std::ofstream attitude_data(this->att_filename, std::ios_base::app);
+
+    _zb = bodyQuaternion * _ez;
+    _zb *= -1.0f;
+    _zb.normalize();
+    _ud_norm = _ud.normalized();
+
+    if (!attitude_data.is_open()) {
+        std::cerr << "Error opening file" << std::endl;
+    } else {
+        // Write time, q_d, q_body, q_error to file
+        attitude_data << t << " "; // Time in seconds
+        attitude_data << refQuaternion.q1 << " " << refQuaternion.q2 << " " << refQuaternion.q3 << " " << refQuaternion.q4 << " "; // q_d quaternion
+        attitude_data << bodyQuaternion.q1 << " " << bodyQuaternion.q2 << " " << bodyQuaternion.q3 << " " << bodyQuaternion.q4 << " "; // q_body quaternion
+        attitude_data << qError.q1 << " " << qError.q2 << " " << qError.q3 << " " << qError.q4 << " "; // q_error quaternion
+        attitude_data << refAngularVelocity.x << " " << refAngularVelocity.y << " " << refAngularVelocity.z << " "; // omega_d vector
+        attitude_data << angularVelocity.x << " " << angularVelocity.y << " " << angularVelocity.z << " "; // omega vector
+        attitude_data << _force_target.x << " " << _force_target.y << " " << _force_target.z << " " << _force_target[3] << " "; // Control action
+        attitude_data << 0.0 << " " << 0.0 << " " << 0.0 << " " << 0.0 << " "; // Motor angular velocities
+        attitude_data << 0.0 << " " << 0.0 << " " << 0.0 << " "; // Control force
+        attitude_data << 0.0 << " " << 0.0 << " " << 0.0 << " "; // Control force derivative
+        attitude_data << _ud_norm.x << " " << _ud_norm.y << " " << _ud_norm.z << " "; // Control force normalized
+        attitude_data << _zb.x << " " << _zb.y << " " << _zb.z << std::endl; // Body frame z-axis in NED inertial frame
+    }
+
+    attitude_data.close();
+
+        // Open file to save position
+    std::ofstream position_data(this->pos_filename, std::ios_base::app);
+
+    // Save x and x_d to file
+    if (!position_data.is_open()) {
+        std::cerr << "Error opening file" << std::endl;
+    } else {
+        // Write time, x, x_d to file
+        position_data << t << " "; // Time in seconds
+        position_data << x[0] << " " << x[1] << " " << x[2] << " "; // x vector
+        position_data << x_dot[0] << " " << x_dot[1] << " " << x_dot[2] << " "; // x_dot vector
+        position_data << x_ddot[0] << " " << x_ddot[1] << " " << x_ddot[2] << " "; // x_ddot vector
+        position_data << x_d[0] << " " << x_d[1] << " " << x_d[2] << " "; // x_d vector
+        position_data << x_d_dot[0] << " " << x_d_dot[1] << " " << x_d_dot[2] << " "; // x_d_dot vector
+        position_data << x_d_ddot[0] << " " << x_d_ddot[1] << " " << x_d_ddot[2] << " "; // x_d_ddot vector
+        position_data << x_d_dddot[0] << " " << x_d_dddot[1] << " " << x_d_dddot[2] << std::endl; // x_d_dddot vector
+    }
+
+    position_data.close();
     
 }
 
@@ -277,6 +377,7 @@ bool ModeLLC::handle_message(const mavlink_message_t &msg)
             // For force vector
             _force_target = bodyQuaternion * _force_target_recvd;
             _force_target.z += -mass * gravity; // Adjust for gravity in inertial frame
+            _ud = _force_target; // Update desired force vector
             // For force derivative vector
             _force_target_derivative = bodyQuaternion * _force_target_derivative_recvd;
             

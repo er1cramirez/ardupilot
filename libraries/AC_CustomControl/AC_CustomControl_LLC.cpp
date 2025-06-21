@@ -13,21 +13,21 @@ const AP_Param::GroupInfo AC_CustomControl_LLC::var_info[] = {
     // @Description: Roll P gain for PD attitude controller
     // @Range: 0.0 10.0
     // @User: Standard
-    AP_GROUPINFO("ROLL_P", 1, AC_CustomControl_LLC, _kp_roll, 3.8f),
+    AP_GROUPINFO("ROLL_P", 1, AC_CustomControl_LLC, _kp_roll, 1.8f),
 
     // @Param: PITCH_P
     // @DisplayName: Pitch P gain
     // @Description: Pitch P gain for PD attitude controller
     // @Range: 0.0 10.0
     // @User: Standard
-    AP_GROUPINFO("PITCH_P", 2, AC_CustomControl_LLC, _kp_pitch, 3.8f),
+    AP_GROUPINFO("PITCH_P", 2, AC_CustomControl_LLC, _kp_pitch, 1.8f),
 
     // @Param: YAW_P
     // @DisplayName: Yaw P gain
     // @Description: Yaw P gain for PD attitude controller
     // @Range: 0.0 10.0
     // @User: Standard  
-    AP_GROUPINFO("YAW_P", 3, AC_CustomControl_LLC, _kp_yaw, 3.8f),
+    AP_GROUPINFO("YAW_P", 3, AC_CustomControl_LLC, _kp_yaw, 1.3f),
 
     // @Param: ROLL_D
     // @DisplayName: Roll D gain
