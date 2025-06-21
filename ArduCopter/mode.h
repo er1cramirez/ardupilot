@@ -1693,6 +1693,8 @@ private:
     AP_Float _hover_thr;
     AP_Int8 _tune_hover_thr;
     const float HOVER_THROTTLE = 0.35f; // Adjust this based on your vehicle
+    float mass;
+    const float gravity = 9.81f; // m/s^2, gravitational acceleration
     
     Vector3f _position, _velocity, _acceleration; // position, velocity and acceleration in intertial frame
     Vector3f _force_target_recvd = {0.0f, 0.0f, 0.0f}; // target force in body frame
