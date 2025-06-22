@@ -13,42 +13,42 @@ const AP_Param::GroupInfo AC_CustomControl_LLC::var_info[] = {
     // @Description: Roll P gain for PD attitude controller
     // @Range: 0.0 10.0
     // @User: Standard
-    AP_GROUPINFO("ROLL_P", 1, AC_CustomControl_LLC, _kp_roll, 1.8f),
+    AP_GROUPINFO("ROLL_P", 1, AC_CustomControl_LLC, _kp_roll, 9.0f),
 
     // @Param: PITCH_P
     // @DisplayName: Pitch P gain
     // @Description: Pitch P gain for PD attitude controller
     // @Range: 0.0 10.0
     // @User: Standard
-    AP_GROUPINFO("PITCH_P", 2, AC_CustomControl_LLC, _kp_pitch, 1.8f),
+    AP_GROUPINFO("PITCH_P", 2, AC_CustomControl_LLC, _kp_pitch, 9.0f),
 
     // @Param: YAW_P
     // @DisplayName: Yaw P gain
     // @Description: Yaw P gain for PD attitude controller
     // @Range: 0.0 10.0
     // @User: Standard  
-    AP_GROUPINFO("YAW_P", 3, AC_CustomControl_LLC, _kp_yaw, 1.3f),
+    AP_GROUPINFO("YAW_P", 3, AC_CustomControl_LLC, _kp_yaw, 9.0f),
 
     // @Param: ROLL_D
     // @DisplayName: Roll D gain
     // @Description: Roll D gain for PD attitude controller
     // @Range: 0.0 1.0
     // @User: Standard
-    AP_GROUPINFO("ROLL_D", 4, AC_CustomControl_LLC, _kd_roll, 0.2f),
+    AP_GROUPINFO("ROLL_D", 4, AC_CustomControl_LLC, _kd_roll, 0.19f),
 
     // @Param: PITCH_D
     // @DisplayName: Pitch D gain
     // @Description: Pitch D gain for PD attitude controller
     // @Range: 0.0 1.0
     // @User: Standard
-    AP_GROUPINFO("PITCH_D", 5, AC_CustomControl_LLC, _kd_pitch, 0.2f),
+    AP_GROUPINFO("PITCH_D", 5, AC_CustomControl_LLC, _kd_pitch, 0.19f),
 
     // @Param: YAW_D
     // @DisplayName: Yaw D gain
     // @Description: Yaw D gain for PD attitude controller
     // @Range: 0.0 1.0
     // @User: Standard
-    AP_GROUPINFO("YAW_D", 6, AC_CustomControl_LLC, _kd_yaw, 0.2f),
+    AP_GROUPINFO("YAW_D", 6, AC_CustomControl_LLC, _kd_yaw, 0.19f),
 
     // @Param: ROLL_I
     // @DisplayName: Roll I gain
@@ -83,7 +83,7 @@ const AP_Param::GroupInfo AC_CustomControl_LLC::var_info[] = {
     // @Description: Throttle hover value for the vehicle
     // @Range: 0.0 1.0
     // @User: Standard
-    AP_GROUPINFO("THROTTLE_HOVER", 11, AC_CustomControl_LLC, _throttle_hover, 0.5f),
+    AP_GROUPINFO("THROTTLE_HOVER", 11, AC_CustomControl_LLC, _throttle_hover, 0.329f),
 
     AP_GROUPEND
 };

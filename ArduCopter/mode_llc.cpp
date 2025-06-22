@@ -67,7 +67,7 @@ void ModeLLC::run()
     mass = (float) _hover_thr / (float) gravity;
     
 #if IS_SIM
-    float x_ref = 0.0f, y_ref = 0.0f, z_ref = 2.0f;
+    float x_ref = 5.0f, y_ref = 5.0f, z_ref = 2.0f;
     float x_dot_ref = 0.0f, y_dot_ref = 0.0f, z_dot_ref = 0.0f;
     float x_ddot_ref = 0.0f, y_ddot_ref = 0.0f, z_ddot_ref = 0.0f;
     float x_dddot_ref = 0.0f, y_dddot_ref = 0.0f, z_dddot_ref = 0.0f;
@@ -111,12 +111,12 @@ void ModeLLC::run()
     Vector3f x_ddot(0.0f, 0.0f, 0.0f);
 
     // Control gains
-    Matrix3f kp1(-0.0f, 0.0f, 0.0f,
-                 0.0f, -0.0f, 0.0f,
+    Matrix3f kp1(-0.1f, 0.0f, 0.0f,
+                 0.0f, -0.1f, 0.0f,
                  0.0f, 0.0f, -0.2f);
 
-    Matrix3f kd1(-0.0f, 0.0f, 0.0f,
-                0.0f, -0.0f, 0.0f,
+    Matrix3f kd1(-0.05f, 0.0f, 0.0f,
+                0.0f, -0.05f, 0.0f,
                 0.0f, 0.0f, -0.1f);
 
     Vector3f u_d(0.0f, 0.0f, 0.0f);
@@ -195,7 +195,8 @@ void ModeLLC::run()
 
     case AP_Motors::SpoolState::THROTTLE_UNLIMITED:
         if (_have_new_force_target) { 
-            // calculateVirtualMap(_force_target, _force_target_derivative, psi_d, psi_d_dot, refQuaternion, refAngularVelocity);
+            calculateVirtualMap(_force_target, _force_target_derivative, psi_d, psi_d_dot, refQuaternion, refAngularVelocity);
+            gcs().send_text(MAV_SEVERITY_INFO, "Mapping");
             _return_home = false;
         }
         
@@ -212,7 +213,7 @@ void ModeLLC::run()
             refAngularVelocity = Vector3f(0.0f, 0.0f, 0.0f);
         }
 #endif
-        refQuaternion = Quaternion(1.0f, 0.0f, 0.0f, 0.0f); // Neutral quaternion
+        // refQuaternion = Quaternion(1.0f, 0.0f, 0.0f, 0.0f); // Neutral quaternion
         attitude_control->input_quaternion(refQuaternion, refAngularVelocity);
         // pos_control->set_alt_target_with_slew(200.0f);
         if ((bool) _tune_hover_thr)
