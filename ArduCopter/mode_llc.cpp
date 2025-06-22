@@ -67,37 +67,37 @@ void ModeLLC::run()
     mass = (float) _hover_thr / (float) gravity;
     
 #if IS_SIM
-    float x_ref = 0.0f, y_ref = 0.0f, z_ref = 10.0f;
+    float x_ref = 0.0f, y_ref = 0.0f, z_ref = 2.0f;
     float x_dot_ref = 0.0f, y_dot_ref = 0.0f, z_dot_ref = 0.0f;
     float x_ddot_ref = 0.0f, y_ddot_ref = 0.0f, z_ddot_ref = 0.0f;
     float x_dddot_ref = 0.0f, y_dddot_ref = 0.0f, z_dddot_ref = 0.0f;
 
-    // Infinity Symbol Path
-    float a = 20.0f; // semi-major axis
-    float bp = 10.0f; // semi-minor axis
-    float w = 0.2f; // angular frequency
+    // // // Infinity Symbol Path
+    // float a = 20.0f; // semi-major axis
+    // float bp = 10.0f; // semi-minor axis
+    // float w = 0.2f; // angular frequency
 
-    x_ref = a * sinf(w * t);
-    y_ref = bp/2.0f * sinf(2.0f * w * t);
-    z_ref = 10.0f;
+    // x_ref = a * sinf(w * t);
+    // y_ref = bp/2.0f * sinf(2.0f * w * t);
+    // z_ref = 10.0f;
 
-    x_dot_ref = a * w * cosf(w * t);
-    y_dot_ref = bp * w * cosf(2.0f * w * t);
+    // x_dot_ref = a * w * cosf(w * t);
+    // y_dot_ref = bp * w * cosf(2.0f * w * t);
 
-    x_ddot_ref = -a * w * w * sinf(w * t);
-    y_ddot_ref = -2 * bp * w * w * sinf(2.0f * w * t);
+    // x_ddot_ref = -a * w * w * sinf(w * t);
+    // y_ddot_ref = -2 * bp * w * w * sinf(2.0f * w * t);
 
-    x_dddot_ref = -a * w * w * w * cosf(w * t);
-    y_dddot_ref = -4 * bp * w * w * w * cosf(2.0f * w * t);
+    // x_dddot_ref = -a * w * w * w * cosf(w * t);
+    // y_dddot_ref = -4 * bp * w * w * w * cosf(2.0f * w * t);
 
 
-    // Height path
-    float h = 4.0f;
-    float w2 = 0.6f;
-    z_ref = 10.0f + h * sinf(w2 * t);
-    z_dot_ref = h * w2 * cosf(w2 * t);
-    z_ddot_ref = -h * w2 * w2 * sinf(w2 * t);
-    z_dddot_ref = -h * w2 * w2 * w2 * cosf(w2 * t);
+    // // Height path
+    // float h = 4.0f;
+    // float w2 = 0.6f;
+    // z_ref = 10.0f + h * sinf(w2 * t);
+    // z_dot_ref = h * w2 * cosf(w2 * t);
+    // z_ddot_ref = -h * w2 * w2 * sinf(w2 * t);
+    // z_dddot_ref = -h * w2 * w2 * w2 * cosf(w2 * t);
 
     Vector3f x_d(x_ref, y_ref, -z_ref);
     Vector3f x_d_dot(x_dot_ref, y_dot_ref, -z_dot_ref);
@@ -111,21 +111,13 @@ void ModeLLC::run()
     Vector3f x_ddot(0.0f, 0.0f, 0.0f);
 
     // Control gains
-    // Matrix3f kp1(-0.5f, 0.0f, 0.0f,
-    //     0.0f, -0.5f, 0.0f,
-    //     0.0f, 0.0f, -0.5f);
+    Matrix3f kp1(-0.0f, 0.0f, 0.0f,
+                 0.0f, -0.0f, 0.0f,
+                 0.0f, 0.0f, -0.2f);
 
-    // Matrix3f kd1(-0.25f, 0.0f, 0.0f,
-    //     0.0f, -0.25, 0.0f,
-    //     0.0f, 0.0f, -0.25f);
-
-    Matrix3f kp1(-0.5f, 0.0f, 0.0f,
-                0.0f, -0.5f, 0.0f,
-                0.0f, 0.0f, -0.5f);
-
-    Matrix3f kd1(-0.35f, 0.0f, 0.0f,
-                0.0f, -0.35f, 0.0f,
-                0.0f, 0.0f, -0.35f);
+    Matrix3f kd1(-0.0f, 0.0f, 0.0f,
+                0.0f, -0.0f, 0.0f,
+                0.0f, 0.0f, -0.1f);
 
     Vector3f u_d(0.0f, 0.0f, 0.0f);
     Vector3f u_d_dot(0.0f, 0.0f, 0.0f);
@@ -149,14 +141,31 @@ void ModeLLC::run()
             // Control law
             u_d = kp1 * xe + kd1 * xe_dot - _ez * mass * gravity + x_d_ddot * mass;
             u_d_dot = kp1 * xe_dot + kd1 * xe_ddot + x_d_dddot * mass;
+            std::cout << "u_d: " << u_d.x << ", " << u_d.y << ", " << u_d.z << std::endl;
             _ud = u_d;
             gcs().send_text(MAV_SEVERITY_INFO, "Reference calculated");
         }
     }
 #endif
 
-    // std::cout << "hover: " << _hover_thr << std::endl;
+    // // std::cout << "hover: " << _hover_thr << std::endl;
+    // // Defining quaternions for trajectory tracking
+    // float A = 0.34f, w1 = 2.0f;
+    // float roll_d = A*sinf(w1*t), pitch_d = A*cosf(w1*t);
 
+    // // The following code is the same as the commented code below
+    // Quaternion q_roll(cosf(roll_d/2.0f), sinf(roll_d/2.0f), 0.0f, 0.0f);
+    // Quaternion q_pitch(cosf(pitch_d/2.0f), 0.0f, sinf(pitch_d/2.0f), 0.0f);
+    // refQuaternion = q_pitch * q_roll; // The multiplication order is important
+
+    // Quaternion q_d_dot((A*w1*sinf(t*w1)*cosf((A*sinf(t*w1))/2.0f)*sinf((A*cosf(t*w1))/2.0f))/2.0f - (A*w1*cosf(t*w1)*cosf((A*cosf(t*w1))/2.0f)*sinf((A*sinf(t*w1))/2.0f))/2.0f, 
+    //                 (A*w1*cosf(t*w1)*cosf((A*cosf(t*w1))/2.0f)*cosf((A*sinf(t*w1))/2.0f))/2.0f + (A*w1*sinf(t*w1)*sinf((A*cosf(t*w1))/2.0f)*sinf((A*sinf(t*w1))/2.0f))/2.0f,
+    //                 -(A*w1*cosf((A*cosf(t*w1))/2.0f)*sinf(t*w1)*cosf((A*sinf(t*w1))/2.0f))/2.0f - (A*w1*cosf(t*w1)*sinf((A*cosf(t*w1))/2.0f)*sinf((A*sinf(t*w1))/2.0f))/2.0f,
+    //                 (A*w1*cosf((A*cosf(t*w1))/2.0f)*sinf(t*w1)*sinf((A*sinf(t*w1))/2.0f))/2.0f - (A*w1*cosf(t*w1)*cosf((A*sinf(t*w1))/2.0f)*sinf((A*cosf(t*w1))/2.0f))/2.0f);
+    
+    // Quaternion q_aux3 = refQuaternion.inverse() * q_d_dot;
+    // Quaternion omega_d_quat(2*q_aux3.q1, 2*q_aux3.q2, 2*q_aux3.q3, 2*q_aux3.q4);
+    // refAngularVelocity = Vector3f(omega_d_quat.q2, omega_d_quat.q3, omega_d_quat.q4);
  
     // Handle motor spool states
     if (!motors->armed()) {
@@ -186,9 +195,10 @@ void ModeLLC::run()
 
     case AP_Motors::SpoolState::THROTTLE_UNLIMITED:
         if (_have_new_force_target) { 
-            calculateVirtualMap(_force_target, _force_target_derivative, psi_d, psi_d_dot, refQuaternion, refAngularVelocity);
+            // calculateVirtualMap(_force_target, _force_target_derivative, psi_d, psi_d_dot, refQuaternion, refAngularVelocity);
             _return_home = false;
         }
+        
 #if IS_SIM
         else
         {
@@ -202,7 +212,7 @@ void ModeLLC::run()
             refAngularVelocity = Vector3f(0.0f, 0.0f, 0.0f);
         }
 #endif
-        // Flying - run quaternion controller
+        refQuaternion = Quaternion(1.0f, 0.0f, 0.0f, 0.0f); // Neutral quaternion
         attitude_control->input_quaternion(refQuaternion, refAngularVelocity);
         // pos_control->set_alt_target_with_slew(200.0f);
         if ((bool) _tune_hover_thr)
@@ -473,8 +483,13 @@ void ModeLLC::calculateVirtualMap(const Vector3f& u_d, const Vector3f& u_dot_d,
     float psi_d, float psi_dot_d,
     Quaternion& refQuat, Vector3f& refOmega) {
     
-    Vector3f u_d_norm = u_d.normalized();
-    Vector3f u_d_dot_norm = u_dot_d / u_d.length() - u_d * (u_d * u_dot_d) / powf(u_d.length(), 3.0f);  
+    Vector3f u_d_upward = u_d;
+    if (u_d.z > 0.0f) {
+        u_d_upward.z = -0.85f * mass * gravity; // Limit the thrust to 85% of the hover thrust
+    }
+    
+    Vector3f u_d_norm = u_d_upward.normalized();
+    Vector3f u_d_dot_norm = u_dot_d / u_d_upward.length() - u_d_upward * (u_d_upward * u_dot_d) / powf(u_d_upward.length(), 3.0f);  
 
     Quaternion q_dxy(1.0f/2.0f * sqrtf(-2*u_d_norm.z + 2),
     u_d_norm.y / sqrtf(-2*u_d_norm.z + 2),
@@ -493,6 +508,6 @@ void ModeLLC::calculateVirtualMap(const Vector3f& u_d, const Vector3f& u_dot_d,
         -cosf(psi_d)*u_d_dot_norm.x - sinf(psi_d)*u_d_dot_norm.y + u_d_dot_norm.z*(cosf(psi_d)*u_d_norm.x + sinf(psi_d)*u_d_norm.y)/(u_d_norm.z - 1.0f),
         psi_dot_d + (u_d_norm.x*u_d_dot_norm.y - u_d_norm.y*u_d_dot_norm.x)/(u_d_norm.z - 1.0f)};
 
-    refThrottle = u_d.length();
+    refThrottle = u_d_upward.length();
 }
 
