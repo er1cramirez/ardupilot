@@ -129,7 +129,7 @@ void ModeLLC::run()
 #endif
         // Flying - run quaternion controller
         attitude_control->input_quaternion(refQuaternion, refAngularVelocity);
-        pos_control->set_alt_target_with_slew(100.0f);
+        pos_control->set_alt_target_with_slew(200.0f);
         break;
 
     case AP_Motors::SpoolState::SPOOLING_UP:
