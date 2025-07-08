@@ -1,5 +1,6 @@
 #include "Copter.h"
 #define IS_SIM true
+#define CTRL_TRANSFORMATION 0
 
 bool ModeLLC::init(bool ignore_checks)
 {
@@ -242,6 +243,22 @@ bool ModeLLC::handle_message(const mavlink_message_t &msg)
             _force_target_derivative_recvd.y = packet.force_derivative_y;
             _force_target_derivative_recvd.z = packet.force_derivative_z;
 
+            if (CTRL_TRANSFORMATION) {
+                // Convert to inertial frame
+                Quaternion bodyQuaternion;
+                ahrs.get_quat_body_to_ned(bodyQuaternion);
+                bodyQuaternion.normalize();
+                // For force vector
+                _force_target = bodyQuaternion * _force_target_recvd; // Change to inertial frame
+                _force_target.z += -0.185f; // Adjust for gravity offset, this is a constant value for the force vector in inertial frame
+                // For force derivative vector
+                _force_target_derivative = bodyQuaternion * _force_target_derivative_recvd;
+            } else {
+                // Do not convert to inertial frame, expect the force vector to be in inertial frame
+                _force_target = _force_target_recvd;
+                _force_target.z += -0.185f; // Adjust for gravity offset, this is a constant value for the force vector in inertial frame
+                _force_target_derivative = _force_target_derivative_recvd;
+            }
             // Convert to inertial frame
             Quaternion bodyQuaternion;
             ahrs.get_quat_body_to_ned(bodyQuaternion);
@@ -251,6 +268,10 @@ bool ModeLLC::handle_message(const mavlink_message_t &msg)
             _force_target.z += -0.185f;// Adjust for gravity offset, this is a constant value for the force vector in inertial frame
             // For force derivative vector
             _force_target_derivative = bodyQuaternion * _force_target_derivative_recvd;
+            _force_target = _force_target_recvd;//Change to inertial frame
+            _force_target.z += -0.185f;// Adjust for gravity offset, this is a constant value for the force vector in inertial frame
+            // For force derivative vector
+            _force_target_derivative = _force_target_derivative_recvd;
             
             _have_new_force_target = true;
             _last_force_target_ms = AP_HAL::millis();
