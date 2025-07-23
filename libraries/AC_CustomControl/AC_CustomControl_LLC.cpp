@@ -115,7 +115,7 @@ void AC_CustomControl_LLC::calculate_attitude_error_quaternion(const Quaternion 
     error_quaternion = attitude_target.inverse() * attitude_body;
     
     // Ensure shortest rotation path
-    error_quaternion.normalize();
+    // error_quaternion.normalize();
 }
 
 Vector3f AC_CustomControl_LLC::update()
@@ -128,7 +128,7 @@ Vector3f AC_CustomControl_LLC::update()
     
     // Get target attitude from attitude controller
     Quaternion attitude_target;
-    attitude_target = _att_control->get_attitude_target_quat();
+    attitude_target = _att_control->get_attitude_target_quat(); 
 
     // Calculate attitude error quaternion
     Quaternion q_error;

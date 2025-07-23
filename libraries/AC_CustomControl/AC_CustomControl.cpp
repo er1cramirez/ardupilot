@@ -106,7 +106,7 @@ void AC_CustomControl::motor_set(Vector3f rpy) {
         _motors->set_yaw(rpy.z);
         _att_control->get_rate_yaw_pid().set_integrator(0.0);
     }
-}
+} 
 
 // move main controller's target to current states, reset filters,
 // and move integrator to motor output

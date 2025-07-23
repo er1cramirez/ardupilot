@@ -1,5 +1,6 @@
 #include "Copter.h"
 #define IS_SIM true
+#define TUNNING_ATTITUDE true
 
 #if IS_SIM
 #include <iostream>
@@ -31,13 +32,14 @@ const AP_Param::GroupInfo ModeLLC::var_info[] = {
 bool ModeLLC::init(bool ignore_checks)
 {
     // Initialize position controller for Z axis if not already active
-    // if (!pos_control->is_active_z()) {
-    //     pos_control->init_z_controller();
-    // }
+    if (!pos_control->is_active_z()) {
+        pos_control->init_z_controller();
+    }
 
-    // // Set vertical speed and acceleration limits
-    // pos_control->set_max_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
-    // pos_control->set_correction_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
+    // Set vertical speed and acceleration limits
+    pos_control->set_max_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
+    pos_control->set_correction_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
+
     init_time = AP_HAL::millis() / 1E3;
     new_file = true;
     _return_home = true;
@@ -53,10 +55,10 @@ void ModeLLC::exit()
     }
 
     // Set vertical speed and acceleration limits
-    pos_control->set_max_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
-    pos_control->set_correction_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
-    pos_control->set_alt_target_with_slew(200.0f);
-    pos_control->update_z_controller();
+    // pos_control->set_max_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
+    // pos_control->set_correction_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
+    // pos_control->set_alt_target_with_slew(200.0f);
+    // pos_control->update_z_controller();
 }
 
 void ModeLLC::run()
@@ -66,7 +68,32 @@ void ModeLLC::run()
     float t = AP_HAL::millis() / 1E3 - init_time;
     mass = (float) _hover_thr / (float) gravity;
     
+#if TUNNING_ATTITUDE
+// Log attitude data to file        
+    float A = 0.17f, omega = 3.5f;
+    float roll_d = A*cosf(omega*t);
+    float roll_d_dot = -A*omega*sinf(omega*t);
+    float pitch_d = A*sinf(omega*t);
+    float pitch_d_dot = A*omega*cosf(omega*t);
+    Quaternion q_roll(cosf(roll_d/2.0f), sinf(roll_d/2.0f), 0.0f, 0.0f);
+    Quaternion q_pitch(cosf(pitch_d/2.0f), 0.0f, sinf(pitch_d/2.0f), 0.0f);
+    Quaternion q_d = q_roll * q_pitch;
+    Quaternion q_roll_dot(0.0f/2.0f, roll_d_dot*cosf(roll_d/2)/2.0f, roll_d_dot*sinf(roll_d/2)/2.0f, 0.0f/2.0f);
+    Quaternion q_pitch_dot(0.0f/2.0f, 0.0f/2.0f, pitch_d_dot*cosf(pitch_d/2)/2.0f, pitch_d_dot*sinf(pitch_d/2)/2.0f);
+    Quaternion q_aux1 = q_roll_dot * q_pitch;
+    Quaternion q_aux2 = q_roll * q_pitch_dot;
+    Quaternion q_d_dot(q_aux1.q1 + q_aux2.q1, q_aux1.q2 + q_aux2.q2, q_aux1.q3 + q_aux2.q3, q_aux1.q4 + q_aux2.q4);
+    Quaternion q_aux3 = q_d.inverse() * q_d_dot;
+    Quaternion omega_d_quat(2*q_aux3.q1, 2*q_aux3.q2, 2*q_aux3.q3, 2*q_aux3.q4);
+    std::cout << "time: " << t << std::endl;
+
+    q_d.normalize();
+    // omega_d_quat.normalize();
+    Vector3f omega_d(omega_d_quat.q2, omega_d_quat.q3, omega_d_quat.q4);
+#endif
+
 #if IS_SIM
+
     float x_ref = 0.0f, y_ref = 0.0f, z_ref = 10.0f;
     float x_dot_ref = 0.0f, y_dot_ref = 0.0f, z_dot_ref = 0.0f;
     float x_ddot_ref = 0.0f, y_ddot_ref = 0.0f, z_ddot_ref = 0.0f;
@@ -75,7 +102,7 @@ void ModeLLC::run()
     // Infinity Symbol Path
     float a = 20.0f; // semi-major axis
     float bp = 10.0f; // semi-minor axis
-    float w = 0.2f; // angular frequency
+    float w = 0.21f; // angular frequency
 
     x_ref = a * sinf(w * t);
     y_ref = bp/2.0f * sinf(2.0f * w * t);
@@ -119,13 +146,13 @@ void ModeLLC::run()
     //     0.0f, -0.25, 0.0f,
     //     0.0f, 0.0f, -0.25f);
 
-    Matrix3f kp1(-0.5f, 0.0f, 0.0f,
-                0.0f, -0.5f, 0.0f,
-                0.0f, 0.0f, -0.5f);
+    Matrix3f kp1(-0.2f, 0.0f, 0.0f,
+                0.0f, -0.2f, 0.0f,
+                0.0f, 0.0f, -0.9f);
 
-    Matrix3f kd1(-0.35f, 0.0f, 0.0f,
-                0.0f, -0.35f, 0.0f,
-                0.0f, 0.0f, -0.35f);
+    Matrix3f kd1(-0.1f, 0.0f, 0.0f,
+                0.0f, -0.1f, 0.0f,
+                0.0f, 0.0f, -0.3f);
 
     Vector3f u_d(0.0f, 0.0f, 0.0f);
     Vector3f u_d_dot(0.0f, 0.0f, 0.0f);
@@ -202,15 +229,27 @@ void ModeLLC::run()
             refAngularVelocity = Vector3f(0.0f, 0.0f, 0.0f);
         }
 #endif
+#if TUNNING_ATTITUDE 
+        refQuaternion = q_d;
+        refAngularVelocity = omega_d;
+        // refThrottle = (float) _hover_thr;
+#else
+#endif
+
+        if ((bool) _tune_hover_thr)
+        {
+            refThrottle = (float) _hover_thr;
+            refQuaternion = Quaternion(1.0f, 0.0f, 0.0f, 0.0f);
+            refAngularVelocity = Vector3f(0.0f, 0.0f, 0.0f);
+        }
+        
         // Flying - run quaternion controller
         attitude_control->input_quaternion(refQuaternion, refAngularVelocity);
-        // pos_control->set_alt_target_with_slew(200.0f);
-        if ((bool) _tune_hover_thr)
-            refThrottle = (float) _hover_thr;
+        pos_control->set_alt_target_with_slew(300.0f);
+        pos_control->update_z_controller();
 
-        motors->set_throttle(refThrottle);
+        // motors->set_throttle(refThrottle);
         break;
-
     case AP_Motors::SpoolState::SPOOLING_UP:
     case AP_Motors::SpoolState::SPOOLING_DOWN:
         // Do nothing
