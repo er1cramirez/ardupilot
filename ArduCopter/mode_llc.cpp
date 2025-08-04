@@ -40,6 +40,7 @@ void ModeLLC::run()
     // Parameters
     float mass = 0.03351f;
     float gravity = 9.81f;
+    
     Vector3f e_z(0.0f, 0.0f, 1.0f);
 
     // Drone data initialization
@@ -130,7 +131,7 @@ void ModeLLC::run()
 #endif
         // Flying - run quaternion controller
         attitude_control->input_quaternion(refQuaternion, refAngularVelocity);
-        pos_control->set_alt_target_with_slew(200.0f);
+        // pos_control->set_alt_target_with_slew(200.0f);
         break;
 
     case AP_Motors::SpoolState::SPOOLING_UP:
@@ -139,10 +140,10 @@ void ModeLLC::run()
         break;
     }
     // Set constant throttle for hover
-    // attitude_control->set_throttle_out(T, true, g.throttle_filt);
+    attitude_control->set_throttle_out(refThrottle, true, g.throttle_filt);
     // Set throttle directly to the motors
     // motors->set_throttle(0.35f);
-    pos_control->update_z_controller();
+    // pos_control->update_z_controller();
 
     AP::logger().Write("YFTG", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
         AP_HAL::micros64(), 
@@ -250,28 +251,15 @@ bool ModeLLC::handle_message(const mavlink_message_t &msg)
                 bodyQuaternion.normalize();
                 // For force vector
                 _force_target = bodyQuaternion * _force_target_recvd; // Change to inertial frame
-                _force_target.z += -0.185f; // Adjust for gravity offset, this is a constant value for the force vector in inertial frame
+                _force_target.z += -gOffset; // Adjust for gravity offset, this is a constant value for the force vector in inertial frame
                 // For force derivative vector
                 _force_target_derivative = bodyQuaternion * _force_target_derivative_recvd;
             } else {
                 // Do not convert to inertial frame, expect the force vector to be in inertial frame
                 _force_target = _force_target_recvd;
-                _force_target.z += -0.185f; // Adjust for gravity offset, this is a constant value for the force vector in inertial frame
+                _force_target.z += -gOffset; // Adjust for gravity offset, this is a constant value for the force vector in inertial frame
                 _force_target_derivative = _force_target_derivative_recvd;
             }
-            // Convert to inertial frame
-            Quaternion bodyQuaternion;
-            ahrs.get_quat_body_to_ned(bodyQuaternion);
-            bodyQuaternion.normalize();
-            // For force vector
-            _force_target = bodyQuaternion * _force_target_recvd;//Change to inertial frame
-            _force_target.z += -0.185f;// Adjust for gravity offset, this is a constant value for the force vector in inertial frame
-            // For force derivative vector
-            _force_target_derivative = bodyQuaternion * _force_target_derivative_recvd;
-            _force_target = _force_target_recvd;//Change to inertial frame
-            _force_target.z += -0.185f;// Adjust for gravity offset, this is a constant value for the force vector in inertial frame
-            // For force derivative vector
-            _force_target_derivative = _force_target_derivative_recvd;
             
             _have_new_force_target = true;
             _last_force_target_ms = AP_HAL::millis();

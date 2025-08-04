@@ -1686,7 +1686,7 @@ private:
     Vector3f refAngularVelocity;
     float refThrottle;
     float _dt;
-    const float HOVER_THROTTLE = 0.35f; // Adjust this based on your vehicle
+    const float gOffset = 0.308f; // Adjust this based on your vehicle
     
     Vector3f _position, _velocity, _acceleration; // position, velocity and acceleration in intertial frame
     Vector3f _force_target_recvd = {0.0f, 0.0f, 0.0f}; // target force in body frame
