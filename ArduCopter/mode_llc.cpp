@@ -1,6 +1,6 @@
 #include "Copter.h"
 #define IS_SIM true
-#define TUNNING_ATTITUDE true
+#define TUNNING_ATTITUDE false
 
 #if IS_SIM
 #include <iostream>
@@ -31,14 +31,14 @@ const AP_Param::GroupInfo ModeLLC::var_info[] = {
 
 bool ModeLLC::init(bool ignore_checks)
 {
-    // Initialize position controller for Z axis if not already active
-    if (!pos_control->is_active_z()) {
-        pos_control->init_z_controller();
-    }
+    // // Initialize position controller for Z axis if not already active
+    // if (!pos_control->is_active_z()) {
+    //     pos_control->init_z_controller();
+    // }
 
-    // Set vertical speed and acceleration limits
-    pos_control->set_max_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
-    pos_control->set_correction_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
+    // // Set vertical speed and acceleration limits
+    // pos_control->set_max_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
+    // pos_control->set_correction_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
 
     init_time = AP_HAL::millis() / 1E3;
     new_file = true;
@@ -245,10 +245,10 @@ void ModeLLC::run()
         
         // Flying - run quaternion controller
         attitude_control->input_quaternion(refQuaternion, refAngularVelocity);
-        pos_control->set_alt_target_with_slew(300.0f);
-        pos_control->update_z_controller();
+        // pos_control->set_alt_target_with_slew(300.0f);
+        // pos_control->update_z_controller();
 
-        // motors->set_throttle(refThrottle);
+        motors->set_throttle(refThrottle);
         break;
     case AP_Motors::SpoolState::SPOOLING_UP:
     case AP_Motors::SpoolState::SPOOLING_DOWN:
