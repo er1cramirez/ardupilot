@@ -3,7 +3,6 @@
 #if AP_CUSTOMCONTROL_ENABLED
 
 #include "AC_CustomControl_LLC.h"
-#include <AP_Math/AP_Math.h>
 #include <AP_Logger/AP_Logger.h>
 
 // table of user settable parameters
@@ -129,6 +128,33 @@ Vector3f AC_CustomControl_LLC::update()
     // Get target attitude from attitude controller
     Quaternion attitude_target;
     attitude_target = _att_control->get_attitude_target_quat();
+     
+    if(_first_run) {
+        // Initialize previous quaternion on first run
+        _prevTargetQuaternion = attitude_target;
+        _prevBodyQuaternion = attitude_body;
+        _first_run = false;
+    }
+
+    // Checks for sign changes in quaternion and if it is, flip the quaternion
+    if (attitude_body.q1 * _prevBodyQuaternion.q1 + attitude_body.q2 * _prevBodyQuaternion.q2 +
+        attitude_body.q3 * _prevBodyQuaternion.q3 + attitude_body.q4 * _prevBodyQuaternion.q4 < 0) {
+        attitude_body.q1 = -attitude_body.q1;
+        attitude_body.q2 = -attitude_body.q2;
+        attitude_body.q3 = -attitude_body.q3;
+        attitude_body.q4 = -attitude_body.q4;
+    }
+
+    if (attitude_target.q1 * _prevTargetQuaternion.q1 + attitude_target.q2 * _prevTargetQuaternion.q2 +
+        attitude_target.q3 * _prevTargetQuaternion.q3 + attitude_target.q4 * _prevTargetQuaternion.q4 < 0) {
+        attitude_target.q1 = -attitude_target.q1;
+        attitude_target.q2 = -attitude_target.q2;
+        attitude_target.q3 = -attitude_target.q3;
+        attitude_target.q4 = -attitude_target.q4;
+    }
+
+    _prevBodyQuaternion = attitude_body;
+    _prevTargetQuaternion = attitude_target;
 
     // Calculate attitude error quaternion
     Quaternion q_error;
