@@ -3,7 +3,6 @@
 #if AP_CUSTOMCONTROL_ENABLED
 
 #include "AC_CustomControl_LLC.h"
-#include <AP_Math/AP_Math.h>
 #include <AP_Logger/AP_Logger.h>
 
 // table of user settable parameters
@@ -13,42 +12,42 @@ const AP_Param::GroupInfo AC_CustomControl_LLC::var_info[] = {
     // @Description: Roll P gain for PD attitude controller
     // @Range: 0.0 10.0
     // @User: Standard
-    AP_GROUPINFO("ROLL_P", 1, AC_CustomControl_LLC, _kp_roll, 1.8f),
+    AP_GROUPINFO("ROLL_P", 1, AC_CustomControl_LLC, _kp_roll, 9.0f),
 
     // @Param: PITCH_P
     // @DisplayName: Pitch P gain
     // @Description: Pitch P gain for PD attitude controller
     // @Range: 0.0 10.0
     // @User: Standard
-    AP_GROUPINFO("PITCH_P", 2, AC_CustomControl_LLC, _kp_pitch, 1.8f),
+    AP_GROUPINFO("PITCH_P", 2, AC_CustomControl_LLC, _kp_pitch, 9.0f),
 
     // @Param: YAW_P
     // @DisplayName: Yaw P gain
     // @Description: Yaw P gain for PD attitude controller
     // @Range: 0.0 10.0
     // @User: Standard  
-    AP_GROUPINFO("YAW_P", 3, AC_CustomControl_LLC, _kp_yaw, 1.3f),
+    AP_GROUPINFO("YAW_P", 3, AC_CustomControl_LLC, _kp_yaw, 9.0f),
 
     // @Param: ROLL_D
     // @DisplayName: Roll D gain
     // @Description: Roll D gain for PD attitude controller
     // @Range: 0.0 1.0
     // @User: Standard
-    AP_GROUPINFO("ROLL_D", 4, AC_CustomControl_LLC, _kd_roll, 0.2f),
+    AP_GROUPINFO("ROLL_D", 4, AC_CustomControl_LLC, _kd_roll, 0.19f),
 
     // @Param: PITCH_D
     // @DisplayName: Pitch D gain
     // @Description: Pitch D gain for PD attitude controller
     // @Range: 0.0 1.0
     // @User: Standard
-    AP_GROUPINFO("PITCH_D", 5, AC_CustomControl_LLC, _kd_pitch, 0.2f),
+    AP_GROUPINFO("PITCH_D", 5, AC_CustomControl_LLC, _kd_pitch, 0.19f),
 
     // @Param: YAW_D
     // @DisplayName: Yaw D gain
     // @Description: Yaw D gain for PD attitude controller
     // @Range: 0.0 1.0
     // @User: Standard
-    AP_GROUPINFO("YAW_D", 6, AC_CustomControl_LLC, _kd_yaw, 0.2f),
+    AP_GROUPINFO("YAW_D", 6, AC_CustomControl_LLC, _kd_yaw, 0.19f),
 
     // @Param: ROLL_I
     // @DisplayName: Roll I gain
@@ -83,7 +82,7 @@ const AP_Param::GroupInfo AC_CustomControl_LLC::var_info[] = {
     // @Description: Throttle hover value for the vehicle
     // @Range: 0.0 1.0
     // @User: Standard
-    AP_GROUPINFO("THROTTLE_HOVER", 11, AC_CustomControl_LLC, _throttle_hover, 0.5f),
+    AP_GROUPINFO("THROTTLE_HOVER", 11, AC_CustomControl_LLC, _throttle_hover, 0.329f),
 
     AP_GROUPEND
 };
@@ -115,7 +114,7 @@ void AC_CustomControl_LLC::calculate_attitude_error_quaternion(const Quaternion 
     error_quaternion = attitude_target.inverse() * attitude_body;
     
     // Ensure shortest rotation path
-    // error_quaternion.normalize();
+    error_quaternion.normalize();
 }
 
 Vector3f AC_CustomControl_LLC::update()
@@ -128,7 +127,34 @@ Vector3f AC_CustomControl_LLC::update()
     
     // Get target attitude from attitude controller
     Quaternion attitude_target;
-    attitude_target = _att_control->get_attitude_target_quat(); 
+    attitude_target = _att_control->get_attitude_target_quat();
+     
+    if(_first_run) {
+        // Initialize previous quaternion on first run
+        _prevTargetQuaternion = attitude_target;
+        _prevBodyQuaternion = attitude_body;
+        _first_run = false;
+    }
+
+    // Checks for sign changes in quaternion and if it is, flip the quaternion
+    if (attitude_body.q1 * _prevBodyQuaternion.q1 + attitude_body.q2 * _prevBodyQuaternion.q2 +
+        attitude_body.q3 * _prevBodyQuaternion.q3 + attitude_body.q4 * _prevBodyQuaternion.q4 < 0) {
+        attitude_body.q1 = -attitude_body.q1;
+        attitude_body.q2 = -attitude_body.q2;
+        attitude_body.q3 = -attitude_body.q3;
+        attitude_body.q4 = -attitude_body.q4;
+    }
+
+    if (attitude_target.q1 * _prevTargetQuaternion.q1 + attitude_target.q2 * _prevTargetQuaternion.q2 +
+        attitude_target.q3 * _prevTargetQuaternion.q3 + attitude_target.q4 * _prevTargetQuaternion.q4 < 0) {
+        attitude_target.q1 = -attitude_target.q1;
+        attitude_target.q2 = -attitude_target.q2;
+        attitude_target.q3 = -attitude_target.q3;
+        attitude_target.q4 = -attitude_target.q4;
+    }
+
+    _prevBodyQuaternion = attitude_body;
+    _prevTargetQuaternion = attitude_target;
 
     // Calculate attitude error quaternion
     Quaternion q_error;

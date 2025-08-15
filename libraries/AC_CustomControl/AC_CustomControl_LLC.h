@@ -3,6 +3,7 @@
 #include "AC_CustomControl_Backend.h"
 
 #if AP_CUSTOMCONTROL_ENABLED
+#include <AP_Math/AP_Math.h>
 
 class AC_CustomControl_LLC : public AC_CustomControl_Backend {
 public:
@@ -39,6 +40,9 @@ private:
     float _integrator_pitch = 0.0f;
     float _integrator_yaw = 0.0f;
     float _dt;
+    bool _first_run = true;
+    Quaternion _prevTargetQuaternion;
+    Quaternion _prevBodyQuaternion;
     
     // Quaternion math helper
     void calculate_attitude_error_quaternion(const Quaternion &attitude_body, 
