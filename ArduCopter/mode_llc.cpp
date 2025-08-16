@@ -296,6 +296,10 @@ void ModeLLC::run()
     // motors->set_throttle(0.35f);
     // pos_control->update_z_controller();
 
+    AP::logger().Write("THRL", "TimeUS,thr", "Qf",
+        AP_HAL::micros64(), 
+        refThrottle);
+
     AP::logger().Write("YFTG", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
         AP_HAL::micros64(), 
         (bool)_have_new_force_target,
@@ -444,9 +448,12 @@ bool ModeLLC::handle_message(const mavlink_message_t &msg)
             _force_target_derivative_recvd.y = packet.force_derivative_y;
             _force_target_derivative_recvd.z = packet.force_derivative_z;
 
-            _force_target.z += -mass * gravity; // Adjust for gravity in inertial frame
-            _ud = _force_target; // Update desired force vector
+            _force_target_recvd.z += -mass * gravity; // Adjust for gravity in inertial frame
+
+            _force_target = _force_target_recvd; // Update force target vector
             _force_target_derivative = _force_target_derivative_recvd; // Update desired force derivative vector
+        
+            _ud = _force_target; // Update desired force vector
 
             _have_new_force_target = true;
             _last_force_target_ms = AP_HAL::millis();
@@ -459,7 +466,9 @@ bool ModeLLC::handle_message(const mavlink_message_t &msg)
 void ModeLLC::calculateVirtualMap(const Vector3f& u_d, const Vector3f& u_dot_d, 
     float psi_d, float psi_dot_d,
     Quaternion& refQuat, Vector3f& refOmega) {
-    
+
+    std::cout << "Aqui se rompe alav" << std::endl;
+
     Vector3f u_d_norm = u_d.normalized();
     Vector3f u_d_dot_norm = u_dot_d / u_d.length() - u_d * (u_d * u_dot_d) / powf(u_d.length(), 3.0f);  
 
