@@ -1,5 +1,8 @@
 #include "Copter.h"
+
 #define IS_SIM true
+#define THRUST_CONTROLLER true
+
 
 #if IS_SIM
 #include <iostream>
@@ -24,20 +27,30 @@ const AP_Param::GroupInfo ModeLLC::var_info[] = {
     // User: Standard
     AP_GROUPINFO("TUNE_HVR_THR", 2, ModeLLC, _tune_hover_thr, 0),
 
+    // @Param: Z_REF
+    // @DisplayName: Reference altitude
+    // @Description: Reference altitude for the LLC mode
+    // @Range: 0.0 10.0
+    // @User: Standard
+    AP_GROUPINFO("Z_REF", 3, ModeLLC, _z_ref, 2.0f),
+
     AP_GROUPEND
 };
 
 
 bool ModeLLC::init(bool ignore_checks)
 {
+#if THRUST_CONTROLLER
     // Initialize position controller for Z axis if not already active
-    // if (!pos_control->is_active_z()) {
-    //     pos_control->init_z_controller();
-    // }
+    if (!pos_control->is_active_z()) {
+        pos_control->init_z_controller();
+    }
 
-    // // Set vertical speed and acceleration limits
-    // pos_control->set_max_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
-    // pos_control->set_correction_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
+    // Set vertical speed and acceleration limits
+    pos_control->set_max_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
+    pos_control->set_correction_speed_accel_z(-get_pilot_speed_dn(), g.pilot_speed_up, g.pilot_accel_z);
+#endif
+
     init_time = AP_HAL::millis() / 1E3;
     new_file = true;
     _return_home = true;
@@ -174,7 +187,12 @@ void ModeLLC::run()
         if ((bool) _tune_hover_thr)
             refThrottle = (float) _hover_thr;
 
+#if  !THRUST_CONTROLLER
         motors->set_throttle(refThrottle);
+#else
+        pos_control->set_alt_target_with_slew((float)_z_ref);
+        pos_control->update_z_controller();
+#endif
         break;
 
     case AP_Motors::SpoolState::SPOOLING_UP:
