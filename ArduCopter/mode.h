@@ -1694,7 +1694,9 @@ private:
     float _dt;
     AP_Float _hover_thr;
     AP_Int8 _tune_hover_thr;
-    AP_Float _z_ref;
+    AP_Float _x_ref, _y_ref, _z_ref;
+    AP_Float _xkp, _ykp, _zkp;
+    AP_Float _xkd, _ykd, _zkd;
     const float HOVER_THROTTLE = 0.35f; // Adjust this based on your vehicle
     float mass;
     const float gravity = 9.81f; // m/s^2, gravitational acceleration
