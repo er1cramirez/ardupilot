@@ -1700,9 +1700,8 @@ private:
     const float HOVER_THROTTLE = 0.35f; // Adjust this based on your vehicle
     float mass;
     const float gravity = 9.81f; // m/s^2, gravitational acceleration
-    float init_time;
+    float init_time, time_offset;
     std::string att_filename = "att_data.txt";
-    std::string pos_filename = "pos_data.txt";
     bool new_file;
     
     Vector3f _ez = {0.0f, 0.0f, 1.0f};

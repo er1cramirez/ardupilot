@@ -12,42 +12,42 @@ const AP_Param::GroupInfo AC_CustomControl_LLC::var_info[] = {
     // @Description: Roll P gain for PD attitude controller
     // @Range: 0.0 10.0
     // @User: Standard
-    AP_GROUPINFO("ROLL_P", 1, AC_CustomControl_LLC, _kp_roll, 9.0f),
+    AP_GROUPINFO("ROLL_P", 1, AC_CustomControl_LLC, _kp_roll, 6.5f),
 
     // @Param: PITCH_P
     // @DisplayName: Pitch P gain
     // @Description: Pitch P gain for PD attitude controller
     // @Range: 0.0 10.0
     // @User: Standard
-    AP_GROUPINFO("PITCH_P", 2, AC_CustomControl_LLC, _kp_pitch, 9.0f),
+    AP_GROUPINFO("PITCH_P", 2, AC_CustomControl_LLC, _kp_pitch, 6.5f),
 
     // @Param: YAW_P
     // @DisplayName: Yaw P gain
     // @Description: Yaw P gain for PD attitude controller
     // @Range: 0.0 10.0
-    // @User: Standard  
-    AP_GROUPINFO("YAW_P", 3, AC_CustomControl_LLC, _kp_yaw, 9.0f),
+    // @User: Standard
+    AP_GROUPINFO("YAW_P", 3, AC_CustomControl_LLC, _kp_yaw, 6.5f),
 
     // @Param: ROLL_D
     // @DisplayName: Roll D gain
     // @Description: Roll D gain for PD attitude controller
     // @Range: 0.0 1.0
     // @User: Standard
-    AP_GROUPINFO("ROLL_D", 4, AC_CustomControl_LLC, _kd_roll, 0.19f),
+    AP_GROUPINFO("ROLL_D", 4, AC_CustomControl_LLC, _kd_roll, 0.15f),
 
     // @Param: PITCH_D
     // @DisplayName: Pitch D gain
     // @Description: Pitch D gain for PD attitude controller
     // @Range: 0.0 1.0
     // @User: Standard
-    AP_GROUPINFO("PITCH_D", 5, AC_CustomControl_LLC, _kd_pitch, 0.19f),
+    AP_GROUPINFO("PITCH_D", 5, AC_CustomControl_LLC, _kd_pitch, 0.15f),
 
     // @Param: YAW_D
     // @DisplayName: Yaw D gain
     // @Description: Yaw D gain for PD attitude controller
     // @Range: 0.0 1.0
     // @User: Standard
-    AP_GROUPINFO("YAW_D", 6, AC_CustomControl_LLC, _kd_yaw, 0.19f),
+    AP_GROUPINFO("YAW_D", 6, AC_CustomControl_LLC, _kd_yaw, 0.15f),
 
     // @Param: ROLL_I
     // @DisplayName: Roll I gain
@@ -76,13 +76,6 @@ const AP_Param::GroupInfo AC_CustomControl_LLC::var_info[] = {
     // @Range: 0.0 1.0
     // @User: Standard
     AP_GROUPINFO("INTEGRATOR_WINDUP", 10, AC_CustomControl_LLC, _integrator_windup, 0.1f),
-
-    // @Param: THROTTLE_HOVER
-    // @DisplayName: Throttle hover
-    // @Description: Throttle hover value for the vehicle
-    // @Range: 0.0 1.0
-    // @User: Standard
-    AP_GROUPINFO("THROTTLE_HOVER", 11, AC_CustomControl_LLC, _throttle_hover, 0.329f),
 
     AP_GROUPEND
 };
@@ -161,14 +154,6 @@ Vector3f AC_CustomControl_LLC::update()
     attitude_target.normalize();
     attitude_body.normalize();
     calculate_attitude_error_quaternion(attitude_body, attitude_target, q_error);
-    // Only for debugging
-    Quaternion q_error_debug = attitude_target * attitude_body.inverse();
-    q_error_debug.normalize();
-
-    
-    // Convert quaternion error to rotation vector (roll, pitch, yaw errors)
-    // Calculate error quaternion using requested approach
-    // Quaternion q_error_new = attitude_body.inverse() * attitude_target;
     
     // Extract the vectorial part as the error
     Vector3f rotation_vector_error(q_error.q2, q_error.q3, q_error.q4);
@@ -193,53 +178,46 @@ Vector3f AC_CustomControl_LLC::update()
     torques.y = - _kp_pitch * rotation_vector_error.y - _kd_pitch * ang_vel_error.y - _ki_pitch * _integrator_pitch;
     torques.z = - _kp_yaw * rotation_vector_error.z - _kd_yaw * ang_vel_error.z - _ki_yaw * _integrator_yaw;
 
-    AP::logger().Write("ZQBT", "TimeUS,q1b,q2b,q3b,q4b,q1t,q2t,q3t,q4t", "Qffffffff", 
-                       AP_HAL::micros64(), 
-                       attitude_body.q1, 
-                       attitude_body.q2, 
-                       attitude_body.q3, 
-                       attitude_body.q4,
-                       attitude_target.q1,
-                       attitude_target.q2,
-                       attitude_target.q3,
-                       attitude_target.q4);
+    AP::logger().Write("ZQBD", "TimeUS,q1,q2,q3,q4", "Qffff", 
+        AP_HAL::micros64(), 
+        attitude_body.q1, 
+        attitude_body.q2, 
+        attitude_body.q3, 
+        attitude_body.q4);
 
-    AP::logger().Write("ZQER", "TimeUS,q1error,q2error,q3error,q4error", "Qffff", 
+    AP::logger().Write("ZQTG", "TimeUS,q1,q2,q3,q4", "Qffff", 
+        AP_HAL::micros64(), 
+        attitude_target.q1, 
+        attitude_target.q2, 
+        attitude_target.q3, 
+        attitude_target.q4);
+
+    AP::logger().Write("ZQER", "TimeUS,q1,q2,q3,q4", "Qffff", 
                        AP_HAL::micros64(), 
                        q_error.q1, 
                        q_error.q2, 
                        q_error.q3, 
                        q_error.q4);
 
-    AP::logger().Write("ZQDB", "TimeUS,q1deb,q2deb,q3deb,q4deb", "Qffff", 
-                        AP_HAL::micros64(), 
-                        q_error_debug.q1, 
-                        q_error_debug.q2, 
-                        q_error_debug.q3, 
-                        q_error_debug.q4);
-
-    AP::logger().Write("ZOME", "TimeUS,wx,wy,wz,wxt,wyt,wzt", "Qffffff", 
+    AP::logger().Write("ZWBD", "TimeUS,x,y,z", "Qfff", 
         AP_HAL::micros64(), 
-        gyro.x,
-        gyro.y,
-        gyro.z,
-        target_ang_vel.x,
-        target_ang_vel.y,
+        gyro.x, 
+        gyro.y, 
+        gyro.z);
+
+    AP::logger().Write("ZWTG", "TimeUS,x,y,z", "Qfff", 
+        AP_HAL::micros64(), 
+        target_ang_vel.x, 
+        target_ang_vel.y, 
         target_ang_vel.z);
 
-    AP::logger().Write("ZOER", "TimeUS,ex,ey,ez", "Qfff", 
-        AP_HAL::micros64(), 
-        rotation_vector_error.x,
-        rotation_vector_error.y,
-        rotation_vector_error.z);
-
-    AP::logger().Write("ZINT", "TimeUS,intx,inty,intz", "Qfff",
+    AP::logger().Write("ZINT", "TimeUS,x,y,z", "Qfff",
         AP_HAL::micros64(), 
         _integrator_roll,
         _integrator_pitch,
         _integrator_yaw);
 
-    AP::logger().Write("ZTOR", "TimeUS,Tx,Ty,Tz", "Qfff",
+    AP::logger().Write("ZTOR", "TimeUS,x,y,z", "Qfff",
         AP_HAL::micros64(), 
         torques.x,
         torques.y,
