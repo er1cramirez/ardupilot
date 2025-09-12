@@ -135,7 +135,7 @@ void ModeLLC::run()
 {
     float psi_d = 0.0f;
     float psi_d_dot = 0.0f;
-    float t = AP_HAL::millis() / 1E3 - init_time;
+    // float t = AP_HAL::millis() / 1E3 - init_time;
     mass = (float) _hover_thr / (float) gravity;
     
 #if TUNNING_ATTITUDE
@@ -288,32 +288,35 @@ void ModeLLC::run()
     case AP_Motors::SpoolState::SPOOLING_DOWN:
         // Do nothing
         break;
+    default:
+        // Do nothing
+        break;
     }
     // Set constant throttle for hover
     // attitude_control->set_throttle_out(T, true, g.throttle_filt);
     // Set throttle directly to the motors
     // motors->set_throttle(0.35f);
     // pos_control->update_z_controller();
+    
+    AP::logger().Write("YFRC", "TimeUS,trcvms,rcvd,fx,fy,fz,fxd,fyd,fzd", "QIbffffff", 
+        AP_HAL::micros64(),
+        _last_force_target_ms,
+        _have_new_force_target,
+        _force_target_recvd.x, 
+        _force_target_recvd.y, 
+        _force_target_recvd.z, 
+        _force_target_derivative_recvd.x, 
+        _force_target_derivative_recvd.y, 
+        _force_target_derivative_recvd.z);
 
-    AP::logger().Write("YFTG", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
+    AP::logger().Write("YFTG", "TimeUS,fx,fy,fz,fxd,fyd,fzd", "Qffffff", 
         AP_HAL::micros64(), 
-        (bool)_have_new_force_target,
-        (float)_force_target.x, 
-        (float)_force_target.y, 
-        (float)_force_target.z, 
-        (float)_force_target_derivative.x, 
-        (float)_force_target_derivative.y, 
-        (float)_force_target_derivative.z);
-
-    AP::logger().Write("YFRC", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
-        AP_HAL::micros64(), 
-        (bool)_have_new_force_target,
-        (float)_force_target_recvd.x, 
-        (float)_force_target_recvd.y, 
-        (float)_force_target_recvd.z, 
-        (float)_force_target_derivative_recvd.x, 
-        (float)_force_target_derivative_recvd.y, 
-        (float)_force_target_derivative_recvd.z);
+        _force_target.x, 
+        _force_target.y, 
+        _force_target.z, 
+        _force_target_derivative.x, 
+        _force_target_derivative.y, 
+        _force_target_derivative.z);
 
     AP::logger().Write("YTHR", "TimeUS,thr", "Qf",
         AP_HAL::micros64(), 
@@ -365,48 +368,48 @@ void ModeLLC::run()
         angularError.y, 
         angularError.z);
 
-    if(this->new_file && _have_new_force_target) {
-        // Time stamp
-        this->new_file = false;  
-        auto td = std::time(nullptr);
-        auto tm = *std::localtime(&td);
-        char timestamp[20];
-        std::strftime(timestamp, sizeof(timestamp), "%m-%d_%H-%M-%S", &tm);
-        time_offset = t;
+    // if(this->new_file && _have_new_force_target) {
+    //     // Time stamp
+    //     this->new_file = false;  
+    //     auto td = std::time(nullptr);
+    //     auto tm = *std::localtime(&td);
+    //     char timestamp[20];
+    //     std::strftime(timestamp, sizeof(timestamp), "%m-%d_%H-%M-%S", &tm);
+    //     time_offset = t;
 
-        this->att_filename = "/home/olara/ap_drone_ws/src/target_tracking/plots/attitude/data/attitude_data_" + std::string(timestamp) + ".txt";
-    }
+    //     this->att_filename = "/home/olara/ap_drone_ws/src/target_tracking/plots/attitude/data/attitude_data_" + std::string(timestamp) + ".txt";
+    // }
 
-    _zb = bodyQuaternion * _ez;
-    _zb *= -1.0f;
-    _zb.normalize();
-    _ud_norm = _ud.normalized();
+    // _zb = bodyQuaternion * _ez;
+    // _zb *= -1.0f;
+    // _zb.normalize();
+    // _ud_norm = _ud.normalized();
 
-    if (_have_new_force_target) {
-        // Open file to save q_d, q_body, q_error along with time
-        std::ofstream attitude_data(this->att_filename, std::ios_base::app);
+    // if (_have_new_force_target) {
+    //     // Open file to save q_d, q_body, q_error along with time
+    //     std::ofstream attitude_data(this->att_filename, std::ios_base::app);
 
 
-        if (!attitude_data.is_open()) {
-            std::cerr << "Error opening file" << std::endl;
-        } else {
-            // Write time, q_d, q_body, q_error to file
-            attitude_data << t-time_offset << " "; // Time in seconds
-            attitude_data << refQuaternion.q1 << " " << refQuaternion.q2 << " " << refQuaternion.q3 << " " << refQuaternion.q4 << " "; // q_d quaternion
-            attitude_data << bodyQuaternion.q1 << " " << bodyQuaternion.q2 << " " << bodyQuaternion.q3 << " " << bodyQuaternion.q4 << " "; // q_body quaternion
-            attitude_data << qError.q1 << " " << qError.q2 << " " << qError.q3 << " " << qError.q4 << " "; // q_error quaternion
-            attitude_data << refAngularVelocity.x << " " << refAngularVelocity.y << " " << refAngularVelocity.z << " "; // omega_d vector
-            attitude_data << angularVelocity.x << " " << angularVelocity.y << " " << angularVelocity.z << " "; // omega vector
-            attitude_data << _force_target.x << " " << _force_target.y << " " << _force_target.z << " " << _force_target[3] << " "; // Control action
-            attitude_data << 0.0 << " " << 0.0 << " " << 0.0 << " " << 0.0 << " "; // Motor angular velocities
-            attitude_data << 0.0 << " " << 0.0 << " " << 0.0 << " "; // Control force
-            attitude_data << 0.0 << " " << 0.0 << " " << 0.0 << " "; // Control force derivative
-            attitude_data << _ud_norm.x << " " << _ud_norm.y << " " << _ud_norm.z << " "; // Control force normalized
-            attitude_data << _zb.x << " " << _zb.y << " " << _zb.z << std::endl; // Body frame z-axis in NED inertial frame
-        }
+    //     if (!attitude_data.is_open()) {
+    //         std::cerr << "Error opening file" << std::endl;
+    //     } else {
+    //         // Write time, q_d, q_body, q_error to file
+    //         attitude_data << t-time_offset << " "; // Time in seconds
+    //         attitude_data << refQuaternion.q1 << " " << refQuaternion.q2 << " " << refQuaternion.q3 << " " << refQuaternion.q4 << " "; // q_d quaternion
+    //         attitude_data << bodyQuaternion.q1 << " " << bodyQuaternion.q2 << " " << bodyQuaternion.q3 << " " << bodyQuaternion.q4 << " "; // q_body quaternion
+    //         attitude_data << qError.q1 << " " << qError.q2 << " " << qError.q3 << " " << qError.q4 << " "; // q_error quaternion
+    //         attitude_data << refAngularVelocity.x << " " << refAngularVelocity.y << " " << refAngularVelocity.z << " "; // omega_d vector
+    //         attitude_data << angularVelocity.x << " " << angularVelocity.y << " " << angularVelocity.z << " "; // omega vector
+    //         attitude_data << _force_target.x << " " << _force_target.y << " " << _force_target.z << " " << _force_target[3] << " "; // Control action
+    //         attitude_data << 0.0 << " " << 0.0 << " " << 0.0 << " " << 0.0 << " "; // Motor angular velocities
+    //         attitude_data << 0.0 << " " << 0.0 << " " << 0.0 << " "; // Control force
+    //         attitude_data << 0.0 << " " << 0.0 << " " << 0.0 << " "; // Control force derivative
+    //         attitude_data << _ud_norm.x << " " << _ud_norm.y << " " << _ud_norm.z << " "; // Control force normalized
+    //         attitude_data << _zb.x << " " << _zb.y << " " << _zb.z << std::endl; // Body frame z-axis in NED inertial frame
+    //     }
 
-        attitude_data.close();
-    }
+    //     attitude_data.close();
+    // }
 }
 
 bool ModeLLC::handle_message(const mavlink_message_t &msg)
@@ -443,8 +446,12 @@ bool ModeLLC::handle_message(const mavlink_message_t &msg)
             _have_new_force_target = true;
             _last_force_target_ms = AP_HAL::millis();
 
+            _force_target_derivative = Vector3f(0.0f, 0.0f, 0.0f);
+
             return true;
         }
+        default:
+            break;
     }
     return false;
 }
