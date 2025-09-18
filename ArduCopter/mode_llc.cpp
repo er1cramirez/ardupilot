@@ -431,16 +431,15 @@ bool ModeLLC::handle_message(const mavlink_message_t &msg)
             _force_target_derivative_recvd.x = packet.force_derivative_x;
             _force_target_derivative_recvd.y = packet.force_derivative_y;
             _force_target_derivative_recvd.z = packet.force_derivative_z;
-
-            // Quaternion q_body;
-            // ahrs.get_quat_body_to_ned(q_body);
-            // q_body.normalize();
-            // _force_target_recvd = q_body.inverse() * _force_target_recvd;
             
-            _force_target_recvd.z += -mass * gravity; // Adjust for gravity in inertial frame
-            _force_target = _force_target_recvd; // Update force target vector
-            _force_target_derivative = _force_target_derivative_recvd; // Update desired force derivative vector
-        
+            Quaternion q_body;
+            ahrs.get_quat_body_to_ned(q_body); // Rotation of the body frame with respect to the inertial frame
+            q_body.normalize();
+            _force_target = q_body * _force_target_recvd; // Transform force vector to inertial frame
+            _force_target.z += -mass * gravity; // Adjust for gravity in inertial frame
+            
+            // _force_target = _force_target_recvd; // Update force target vector
+            // _force_target_derivative = _force_target_derivative_recvd; // Update desired force derivative vector
             _ud = _force_target; // Update desired force vector
 
             _have_new_force_target = true;
