@@ -26,7 +26,7 @@ void ModeLLC::run()
     float psi_d_dot = 0.0f;
     
 #if IS_SIM
-    float x_ref = 0.0f, y_ref = 0.0f, z_ref = 3.0f;
+    float x_ref = 0.0f, y_ref = 0.0f, z_ref = 4.0f;
     float x_dot_ref = 0.0f, y_dot_ref = 0.0f, z_dot_ref = 0.0f;
     float x_ddot_ref = 0.0f, y_ddot_ref = 0.0f, z_ddot_ref = 0.0f;
     float x_dddot_ref = 0.0f, y_dddot_ref = 0.0f, z_dddot_ref = 0.0f;
