@@ -1,6 +1,9 @@
 #include "Copter.h"
-#define IS_SIM true
 #define CTRL_TRANSFORMATION 0
+
+// Set to 1 to enable vision-based velocity field control
+// Set to 0 to use AHRS poshold (safe fallback)
+#define USE_VISION_CONTROL 1
 
 bool ModeLLC::init(bool ignore_checks)
 {
@@ -24,195 +27,243 @@ void ModeLLC::run()
 {
     float psi_d = 0.0f;
     float psi_d_dot = 0.0f;
-    
-#if IS_SIM
-    float x_ref = 0.0f, y_ref = 0.0f, z_ref = 4.0f;
-    float x_dot_ref = 0.0f, y_dot_ref = 0.0f, z_dot_ref = 0.0f;
-    float x_ddot_ref = 0.0f, y_ddot_ref = 0.0f, z_ddot_ref = 0.0f;
-    float x_dddot_ref = 0.0f, y_dddot_ref = 0.0f, z_dddot_ref = 0.0f;
-
-    Vector3f x_d(x_ref, y_ref, -z_ref);
-    Vector3f x_d_dot(x_dot_ref, y_dot_ref, -z_dot_ref);
-    Vector3f x_d_ddot(x_ddot_ref, y_ddot_ref, -z_ddot_ref);
-    Vector3f x_d_dddot(x_dddot_ref, y_dddot_ref, -z_dddot_ref);
-    // float psi_d = 3.1416f/4.0f;
-
-    // Parameters
-    float mass = 0.03351f;
-    float gravity = 9.81f;
-    
-    Vector3f e_z(0.0f, 0.0f, 1.0f);
-
-    // Drone data initialization
-    Vector3f x(0.0f, 0.0f, 0.0f);
-    Vector3f x_dot(0.0f, 0.0f, 0.0f);
-    Vector3f x_ddot(0.0f, 0.0f, 0.0f);
-
-    // Control gains
-    Matrix3f kp1(-0.5f, 0.0f, 0.0f,
-        0.0f, -0.5f, 0.0f,
-        0.0f, 0.0f, -0.5f);
-
-    Matrix3f kd1(-0.3f, 0.0f, 0.0f,
-        0.0f, -0.3, 0.0f,
-        0.0f, 0.0f, -0.3f);
 
     Vector3f u_d(0.0f, 0.0f, 0.0f);
     Vector3f u_d_dot(0.0f, 0.0f, 0.0f);
 
-    // Get position, velocity and acceleration data
-    if(ahrs.get_relative_position_NED_home(_position) && ahrs.get_velocity_NED(_velocity)) 
-    {   
-        _acceleration = ahrs.get_accel_ef(); // Acceleration in NED inertial frame
+    // --- Read vision estimator state (used by both control paths) ---
+    const VisionStateEstimator& vest = copter.vision_estimator;
+    Vector3f pos = vest.get_position();
+    Vector3f vel = vest.get_velocity();
+    Vector3f acc = vest.get_acceleration();
+    const bool vision_ok = vest.is_healthy();
 
-        if(_return_home)
-        {
-            x = _position;
-            x_dot = _velocity;
-            x_ddot = _acceleration + e_z*gravity;
-    
-            // Errors
-            Vector3f xe = x - x_d;
-            Vector3f xe_dot = x_dot - x_d_dot;
-            Vector3f xe_ddot = x_ddot - x_d_ddot;
-            
-            // Control law
-            u_d = kp1 * xe + kd1 * xe_dot - e_z * mass * gravity + x_d_ddot * mass;
-            u_d_dot = kp1 * xe_dot + kd1 * xe_ddot + x_d_dddot * mass;
-            gcs().send_text(MAV_SEVERITY_INFO, "Reference calculated");
-        }
+    // Flag to track which controller is active this cycle
+    bool using_vision = false;
+
+#if USE_VISION_CONTROL
+    // --- Vision-based P controller on velocity field error ---
+    if (vision_ok) {
+        using_vision = true;
+
+        // Compute velocity field
+        RelativeFieldOutput field = computeRelativeVelocityField(pos, _field_params);
+
+        // Velocity tracking error
+        Vector3f ev = vel - field.rdot_des;
+
+        // P controller gains (per-axis)
+        constexpr float kp_xy = 0.03f;   // Horizontal gain
+        constexpr float kp_z  = 0.095f;   // Vertical gain
+
+        // Control law: u = kp * ev - gOffset * e_z
+        u_d.x = kp_xy * ev.x;
+        u_d.y = kp_xy * ev.y;
+        u_d.z = kp_z  * ev.z - gOffset;
+
+        // u_dot = 0 for initial P test
+        u_d_dot.zero();
+
+        // Log velocity field output
+        AP::logger().Write("VFLD", "TimeUS,rdx,rdy,rdz,rho,rref,erho,mur,muz", "Qffffffff",
+            AP_HAL::micros64(),
+            (double)field.rdot_des.x, (double)field.rdot_des.y, (double)field.rdot_des.z,
+            (double)field.rho,
+            (double)field.rho_ref,
+            (double)field.e_rho,
+            (double)field.mu_r,
+            (double)field.mu_z);
+
+        // Debug log: r_dot, r_dot_des, e_v
+        AP::logger().Write("VDBG", "TimeUS,vx,vy,vz,dx,dy,dz,ex,ey,ez", "Qfffffffff",
+            AP_HAL::micros64(),
+            (double)vel.x, (double)vel.y, (double)vel.z,
+            (double)field.rdot_des.x, (double)field.rdot_des.y, (double)field.rdot_des.z,
+            (double)ev.x, (double)ev.y, (double)ev.z);
+
+        // Log the actual force command
+        AP::logger().Write("UCMD", "TimeUS,ux,uy,uz,vis", "Qfffi",
+            AP_HAL::micros64(),
+            (double)u_d.x, (double)u_d.y, (double)u_d.z,
+            (int32_t)1);
     }
 #endif
 
- 
+    // --- Fallback: AHRS poshold controller ---
+    if (!using_vision) {
+        float x_ref = 0.0f, y_ref = 0.0f, z_ref = 4.0f;
+        float mass = 0.03351f;
+        float gravity = 9.81f;
+        Vector3f e_z(0.0f, 0.0f, 1.0f);
+
+        Vector3f x_d(x_ref, y_ref, -z_ref);
+        Vector3f x_d_dot(0.0f, 0.0f, 0.0f);
+        Vector3f x_d_ddot(0.0f, 0.0f, 0.0f);
+        Vector3f x_d_dddot(0.0f, 0.0f, 0.0f);
+
+        Matrix3f kp1(-0.5f, 0.0f, 0.0f,
+            0.0f, -0.5f, 0.0f,
+            0.0f, 0.0f, -0.5f);
+
+        Matrix3f kd1(-0.3f, 0.0f, 0.0f,
+            0.0f, -0.3f, 0.0f,
+            0.0f, 0.0f, -0.3f);
+
+        if(ahrs.get_relative_position_NED_home(_position) && ahrs.get_velocity_NED(_velocity))
+        {
+            _acceleration = ahrs.get_accel_ef();
+
+            if(_return_home)
+            {
+                Vector3f x = _position;
+                Vector3f x_dot = _velocity;
+                Vector3f x_ddot = _acceleration + e_z * gravity;
+
+                Vector3f xe = x - x_d;
+                Vector3f xe_dot = x_dot - x_d_dot;
+                Vector3f xe_ddot = x_ddot - x_d_ddot;
+
+                u_d = kp1 * xe + kd1 * xe_dot - e_z * mass * gravity + x_d_ddot * mass;
+                u_d_dot = kp1 * xe_dot + kd1 * xe_ddot + x_d_dddot * mass;
+            }
+        }
+
+        // Log force command from poshold
+        AP::logger().Write("UCMD", "TimeUS,ux,uy,uz,vis", "Qfffi",
+            AP_HAL::micros64(),
+            (double)u_d.x, (double)u_d.y, (double)u_d.z,
+            (int32_t)0);
+
+        // Still compute velocity field for observation if estimator is healthy
+        if (vision_ok) {
+            RelativeFieldOutput field = computeRelativeVelocityField(pos, _field_params);
+
+            AP::logger().Write("VFLD", "TimeUS,rdx,rdy,rdz,rho,rref,erho,mur,muz", "Qffffffff",
+                AP_HAL::micros64(),
+                (double)field.rdot_des.x, (double)field.rdot_des.y, (double)field.rdot_des.z,
+                (double)field.rho,
+                (double)field.rho_ref,
+                (double)field.e_rho,
+                (double)field.mu_r,
+                (double)field.mu_z);
+
+            Vector3f ev = vel - field.rdot_des;
+            AP::logger().Write("VDBG", "TimeUS,vx,vy,vz,dx,dy,dz,ex,ey,ez", "Qfffffffff",
+                AP_HAL::micros64(),
+                (double)vel.x, (double)vel.y, (double)vel.z,
+                (double)field.rdot_des.x, (double)field.rdot_des.y, (double)field.rdot_des.z,
+                (double)ev.x, (double)ev.y, (double)ev.z);
+        }
+    }
+
     // Handle motor spool states
     if (!motors->armed()) {
         motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::SHUT_DOWN);
-        
+
         attitude_control->reset_rate_controller_I_terms();
         attitude_control->reset_yaw_target_and_rate(false);
-        pos_control->relax_z_controller(0.0f);   // forces throttle output to decay to zero
+        pos_control->relax_z_controller(0.0f);
     } else {
         motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
     }
+
     switch (motors->get_spool_state()) {
     case AP_Motors::SpoolState::SHUT_DOWN:
-        // Motors Stopped
-        attitude_control->reset_yaw_target_and_rate();  
+        attitude_control->reset_yaw_target_and_rate();
         attitude_control->reset_rate_controller_I_terms();
         pos_control->relax_z_controller(0.0f);
         break;
 
     case AP_Motors::SpoolState::GROUND_IDLE:
-        // Landed
         attitude_control->reset_yaw_target_and_rate();
         attitude_control->reset_rate_controller_I_terms_smoothly();
-
         pos_control->relax_z_controller(0.0f);
         break;
 
     case AP_Motors::SpoolState::THROTTLE_UNLIMITED:
-        if (_have_new_force_target) { 
-            calculateVirtualMap(_force_target, _force_target_derivative, psi_d, psi_d_dot, refQuaternion, refAngularVelocity);
-            _return_home = false;
-        }
-#if IS_SIM
-        else
-        {
-            calculateVirtualMap(u_d, u_d_dot, psi_d, psi_d_dot, refQuaternion, refAngularVelocity);
-        }
-#else
-        else
-        {
-            // Set desired neutral attitude (null quaternion)
-            refQuaternion = Quaternion(1.0f, 0.0f, 0.0f, 0.0f);
-            refAngularVelocity = Vector3f(0.0f, 0.0f, 0.0f);
-        }
-#endif
-        // Flying - run quaternion controller
+        calculateVirtualMap(u_d, u_d_dot, psi_d, psi_d_dot, refQuaternion, refAngularVelocity);
         attitude_control->input_quaternion(refQuaternion, refAngularVelocity);
-        // pos_control->set_alt_target_with_slew(200.0f);
         break;
 
     case AP_Motors::SpoolState::SPOOLING_UP:
     case AP_Motors::SpoolState::SPOOLING_DOWN:
-        // Do nothing
         break;
     }
-    // Set constant throttle for hover
+
+    // Throttle output
     attitude_control->set_throttle_out(refThrottle, true, g.throttle_filt);
-    // Set throttle directly to the motors
-    // motors->set_throttle(0.35f);
-    // pos_control->update_z_controller();
 
-    AP::logger().Write("YFTG", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
-        AP_HAL::micros64(), 
-        (bool)_have_new_force_target,
-        (float)_force_target.x, 
-        (float)_force_target.y, 
-        (float)_force_target.z, 
-        (float)_force_target_derivative.x, 
-        (float)_force_target_derivative.y, 
-        (float)_force_target_derivative.z);
-
-    AP::logger().Write("YFRC", "TimeUS,rcvd,fx,fy,fz,fxd,fyd,fzd", "Qbffffff", 
-        AP_HAL::micros64(), 
-        (bool)_have_new_force_target,
-        (float)_force_target_recvd.x, 
-        (float)_force_target_recvd.y, 
-        (float)_force_target_recvd.z, 
-        (float)_force_target_derivative_recvd.x, 
-        (float)_force_target_derivative_recvd.y, 
-        (float)_force_target_derivative_recvd.z);
-
-    Quaternion bodyQuaternion, qError;
-    ahrs.get_quat_body_to_ned(bodyQuaternion);
-    bodyQuaternion.normalize();
-    qError = refQuaternion.inverse() * bodyQuaternion;
-
-    AP::logger().Write("YQBD", "TimeUS,q1,q2,q3,q4", "Qffff", 
-        AP_HAL::micros64(), 
-        bodyQuaternion.q1, 
-        bodyQuaternion.q2, 
-        bodyQuaternion.q3, 
-        bodyQuaternion.q4);
-
-    AP::logger().Write("YQRF", "TimeUS,q1,q2,q3,q4", "Qffff", 
-        AP_HAL::micros64(), 
-        refQuaternion.q1, 
-        refQuaternion.q2, 
-        refQuaternion.q3, 
-        refQuaternion.q4);
-
-    AP::logger().Write("YQER", "TimeUS,q1,q2,q3,q4", "Qffff",
-        AP_HAL::micros64(), 
-        qError.q1, 
-        qError.q2, 
-        qError.q3, 
-        qError.q4);
-
-    Vector3f angularVelocity = ahrs.get_gyro_latest();
-    Vector3f angularError = angularVelocity - refAngularVelocity;
-    AP::logger().Write("YWBD", "TimeUS,wx,wy,wz", "Qfff", 
-        AP_HAL::micros64(), 
-        angularVelocity.x, 
-        angularVelocity.y, 
-        angularVelocity.z);
-
-    AP::logger().Write("YWRF", "TimeUS,wx,wy,wz", "Qfff", 
-        AP_HAL::micros64(), 
-        refAngularVelocity.x, 
-        refAngularVelocity.y, 
-        refAngularVelocity.z);
-
-    AP::logger().Write("YWER", "TimeUS,wx,wy,wz", "Qfff", 
-        AP_HAL::micros64(), 
-        angularError.x, 
-        angularError.y, 
-        angularError.z);
-    
+    // Log estimator state
+    AP::logger().Write("MLLC", "TimeUS,px,py,pz,vx,vy,vz,ax,ay,az,h", "Qffffffffff",
+        AP_HAL::micros64(),
+        (double)pos.x, (double)pos.y, (double)pos.z,
+        (double)vel.x, (double)vel.y, (double)vel.z,
+        (double)acc.x, (double)acc.y, (double)acc.z,
+        (double)(vision_ok ? 1.0f : 0.0f));
 }
 
+// ---------------------------------------------------------------
+// Relative velocity field computation
+// ---------------------------------------------------------------
+ModeLLC::RelativeFieldOutput ModeLLC::computeRelativeVelocityField(
+    const Vector3f& r, const RelativeFieldParams& p) const
+{
+    RelativeFieldOutput out{};
+
+    // 1) Height: r.z > 0 when drone is above marker (NED convention)
+    //    Clamp to zero to avoid sign flip near contact
+    const float h = MAX(r.z, 0.0f);
+
+    // 2) Horizontal distance to vertical axis of the marker
+    const float x = r.x;
+    const float y = r.y;
+    const float rho = sqrtf(x * x + y * y);
+    out.rho = rho;
+
+    // 3) Allowed radius dependent on height (adaptive tube)
+    //    High altitude: rho_ref ≈ rho_max (relaxed centering)
+    //    Near ground:   rho_ref → 0 (strict centering)
+    out.rho_ref = p.rho_max * tanhf(p.k_slope * h);
+
+    // 4) Radial error: only active outside the tube
+    float e_rho = rho - out.rho_ref;
+    e_rho = MAX(e_rho, 0.0f);
+    out.e_rho = e_rho;
+
+    // 5) Radial correction intensity (smooth 0→1)
+    out.mu_r = tanhf(p.k_r * e_rho);
+
+    // 6) Desired horizontal relative velocity
+    //    Points opposite to r_xy to reduce horizontal distance
+    out.rdot_des.x = 0.0f;
+    out.rdot_des.y = 0.0f;
+
+    if (rho > p.rho_eps) {
+        const float inv_rho = 1.0f / rho;
+        const float speed_radial = p.v_xy_max * out.mu_r;
+
+        out.rdot_des.x = -speed_radial * x * inv_rho;
+        out.rdot_des.y = -speed_radial * y * inv_rho;
+    }
+
+    // 7) Descent enable factor: reduced when off-center
+    out.mu_z = 1.0f / (1.0f + p.k_center * e_rho * e_rho);
+
+    // 8) Desired vertical relative velocity
+    //    Negative = descend (reduce h)
+    //    Smoothly goes to zero near the platform
+    if (h > p.h_eps) {
+        out.rdot_des.z = -p.v_z_max * tanhf(p.k_z * h) * out.mu_z;
+    } else {
+        out.rdot_des.z = 0.0f;
+    }
+
+    return out;
+}
+
+// ---------------------------------------------------------------
+// MAVLink message handling
+// ---------------------------------------------------------------
 bool ModeLLC::handle_message(const mavlink_message_t &msg)
 {
     switch (msg.msgid) {
@@ -221,9 +272,9 @@ bool ModeLLC::handle_message(const mavlink_message_t &msg)
             mavlink_force_vector_target_t packet;
             mavlink_msg_force_vector_target_decode(&msg, &packet);
             
-            if (packet.target_system != g.sysid_this_mav) {
-                break;
-            }
+            // if (packet.target_system != g.sysid_this_mav) {
+            //     break;
+            // }
             // custom log to check the mavlink com performance
             // I've added the sender time and msg sequence number to the message
             // Add the local time to the log to check the latency

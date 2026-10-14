@@ -1702,6 +1702,47 @@ private:
         float psi_d, float psi_dot_d,
         Quaternion& refQuat, Vector3f& refOmega);
 
+    // ---------------------------------------------------------------
+    // Relative velocity field for vision-based landing/tracking
+    // ---------------------------------------------------------------
+
+    // Parameters for the relative velocity field (tunable design constants)
+    struct RelativeFieldParams {
+        // Horizontal field
+        float v_xy_max = 0.4f;     // Max horizontal relative velocity [m/s]
+        float k_r      = 1.5f;     // Radial tanh slope
+
+        // Adaptive tube radius (height-dependent)
+        float rho_max  = 1.5f;     // Max allowed radius around vertical axis [m]
+        float k_slope  = 0.8f;     // Slope for rho_ref vs height
+
+        // Vertical field
+        float v_z_max  = 0.25f;    // Max descent relative velocity [m/s]
+        float k_z      = 0.8f;     // Descent tanh slope
+        float k_center = 10.0f;    // Descent inhibition when off-center
+
+        // Numerical protections
+        float rho_eps  = 0.02f;    // Min rho to avoid division by zero
+        float h_eps    = 0.05f;    // Height deadband near landing [m]
+    };
+
+    // Output of the velocity field (for logging and control)
+    struct RelativeFieldOutput {
+        Vector3f rdot_des;         // Desired relative velocity (NED)
+        float rho;                 // Current horizontal distance to vertical axis
+        float rho_ref;             // Allowed radius at current height
+        float e_rho;               // Radial error: max(rho - rho_ref, 0)
+        float mu_r;                // Radial correction intensity [0..1]
+        float mu_z;                // Descent enable factor [0..1]
+    };
+
+    // Compute the relative velocity field from estimator position
+    RelativeFieldOutput computeRelativeVelocityField(
+        const Vector3f& r, const RelativeFieldParams& p) const;
+
+    // Velocity field parameters (can be tuned)
+    RelativeFieldParams _field_params;
+
 protected:
    const char *name() const override { return "LLC"; }
    const char *name4() const override { return "LLC"; }

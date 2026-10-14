@@ -1501,6 +1501,52 @@ void GCS_MAVLINK_Copter::handle_message(const mavlink_message_t &msg)
     case MAVLINK_MSG_ID_FORCE_VECTOR_TARGET:
         copter.flightmode->handle_message(msg);
         break;
+    case MAVLINK_MSG_ID_CUSTOM_VISION_DATA: {
+        mavlink_custom_vision_data_t packet;
+        mavlink_msg_custom_vision_data_decode(&msg, &packet);
+
+        // DEBUG: confirm handler is reached (one-shot message)
+        static bool first_vision_msg = true;
+        if (first_vision_msg) {
+            gcs().send_text(MAV_SEVERITY_INFO, "VEST: First vision msg received! seq=%u flg=%u", 
+                (unsigned)packet.seq, (unsigned)packet.flags);
+            first_vision_msg = false;
+        }
+
+        // Position arrives in body frame (relative to camera/drone)
+        Vector3f pos_body(packet.position[0], packet.position[1], packet.position[2]);
+
+        // Transform body -> NED using current AHRS orientation
+        Quaternion q_body2ned;
+        copter.ahrs.get_quat_body_to_ned(q_body2ned);
+        q_body2ned.normalize();
+        Vector3f pos_ned = q_body2ned * pos_body;
+
+        // Log raw data: body frame + NED + diagnostics
+        AP::logger().Write("VRAW", "TimeUS,seq,bx,by,bz,nx,ny,nz,rpe,flg", "QIfffffffi",
+            AP_HAL::micros64(),
+            packet.seq,
+            (double)pos_body.x, (double)pos_body.y, (double)pos_body.z,
+            (double)pos_ned.x, (double)pos_ned.y, (double)pos_ned.z,
+            (double)packet.reprojection_error,
+            (int32_t)packet.flags);
+
+        // Feed to vision state estimator (gating by flags is done inside)
+        bool accepted = copter.vision_estimator.update_measurement(pos_ned,
+            packet.flags, packet.reprojection_error);
+
+        // DEBUG: periodic status (every ~5 seconds)
+        static uint32_t last_debug_ms = 0;
+        uint32_t now_ms = AP_HAL::millis();
+        if (now_ms - last_debug_ms > 5000) {
+            last_debug_ms = now_ms;
+            gcs().send_text(MAV_SEVERITY_INFO, "VEST: seq=%u rpe=%.1f flg=%u acc=%d hlth=%d",
+                (unsigned)packet.seq, (double)packet.reprojection_error,
+                (unsigned)packet.flags, (int)accepted,
+                (int)copter.vision_estimator.is_healthy());
+        }
+        break;
+    }
 #endif
 #if MODE_GUIDED_ENABLED
     case MAVLINK_MSG_ID_SET_ATTITUDE_TARGET:

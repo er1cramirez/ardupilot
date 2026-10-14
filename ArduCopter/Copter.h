@@ -173,6 +173,7 @@
 #include "UserParameters.h"
 #endif
 #include "mode.h"
+#include "VisionStateEstimator.h"
 
 class Copter : public AP_Vehicle {
 public:
@@ -223,6 +224,7 @@ public:
     friend class ModeZigZag;
     friend class ModeAutorotate;
     friend class ModeTurtle;
+    friend class ModeLLC;
 
     friend class _AutoTakeoff;
 
@@ -1063,6 +1065,7 @@ private:
 #if MODE_LLC_ENABLED
     ModeLLC mode_llc;
 #endif
+    VisionStateEstimator vision_estimator;
 #if MODE_GUIDED_ENABLED
     ModeGuided mode_guided;
 #if AP_SCRIPTING_ENABLED

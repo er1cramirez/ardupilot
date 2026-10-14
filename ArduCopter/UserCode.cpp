@@ -3,15 +3,18 @@
 #ifdef USERHOOK_INIT
 void Copter::userhook_init()
 {
-    // put your initialisation code here
-    // this will be called once at start-up
+    // Initialize the vision-based state estimator (KF with jerk model)
+    vision_estimator.init();
 }
 #endif
 
 #ifdef USERHOOK_FASTLOOP
 void Copter::userhook_FastLoop()
 {
-    // put your 100Hz code here
+    // Run vision estimator prediction at 100Hz
+    // Uses real timestamp for accurate dt computation in KF
+    float now_sec = AP_HAL::micros64() * 1.0e-6f;
+    vision_estimator.predict(now_sec);
 }
 #endif
 
