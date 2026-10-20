@@ -99,7 +99,7 @@ private:
     static constexpr uint32_t TIMEOUT_MS = 500;        // ms without valid measurement -> unhealthy
 
     // Measurement noise (position variance in m²)
-    static constexpr float R_BASE = 0.015f;             // Base measurement noise at nominal reprojection error
+    static constexpr float R_BASE = 1.0e-4f;             // Base measurement noise at nominal reprojection error
 
     // Reprojection error thresholds (pixels)
     static constexpr float REPROJ_NOMINAL = 1.0f;      // Below this: use R_BASE directly
@@ -110,7 +110,7 @@ private:
     static constexpr float R_LOW_QUALITY_MULT = 4.0f;  // 4x more noise when low_quality flag is set
 
     // Process noise: jerk spectral density (m/s³)²
-    static constexpr float SIGMA_JERK_SQ = 22.0f;      // Tunable: depends on expected maneuvering
+    static constexpr float SIGMA_JERK_SQ = 500.0f;      // Tunable: depends on expected maneuvering
 
     // Initial covariance for unknown states
     static constexpr float P_INIT_VEL = 10.0f;         // (m/s)² initial velocity uncertainty
