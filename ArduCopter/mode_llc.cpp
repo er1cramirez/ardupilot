@@ -10,6 +10,11 @@
 //   - El estimador se congela al perder mediciones y se reinicia al recuperarlas.
 // ---------------------------------------------------------------------------
 
+// Ganancias desde parámetros USR_* (ronda B)
+float ModeLLC::kp_xy() const { return g2.user_parameters.kp_xy(); }
+float ModeLLC::ki_xy() const { return g2.user_parameters.ki_xy(); }
+float ModeLLC::kp_z() const { return g2.user_parameters.kp_z(); }
+
 bool ModeLLC::init(bool ignore_checks)
 {
     // Initialize position controller for Z axis if not already active
@@ -27,6 +32,14 @@ bool ModeLLC::init(bool ignore_checks)
     // Supervisor: arranca en HOLD y pasa a TRACK con mediciones continuas
     _sup = SupState::HOLD;
     _ixy.zero();
+    _xy_sat = false;
+    _psi_hold = ahrs.get_yaw();   // ronda B: mantener el yaw de entrada (si USR_YAWHOLD=1)
+
+    AP::logger().Write("LLCG", "TimeUS,kpxy,kixy,kpz,tilt,aboost,yawh,psi", "QffffBBf",
+        AP_HAL::micros64(), (double)kp_xy(), (double)ki_xy(), (double)kp_z(),
+        (double)g2.user_parameters.tilt_max_deg(),
+        (uint8_t)g2.user_parameters.angle_boost(), (uint8_t)g2.user_parameters.yaw_hold(),
+        (double)_psi_hold);
     _reacq_start_ms = 0;
     _td_low_start_ms = 0;
     gcs().send_text(MAV_SEVERITY_INFO, "LLC: init, sup=HOLD");
@@ -73,7 +86,7 @@ Vector3f ModeLLC::verticalOnlyCommand(float rdz_des) const
     }
     const float rdot_z = -vD;   // r = p_marcador - p_dron, marcador estático
     // xy: integral congelada como trim (compensa la perturbación estimada en TRACK)
-    return Vector3f(KI_XY * _ixy.x, KI_XY * _ixy.y, KP_Z * (rdot_z - rdz_des) - gOffset);
+    return Vector3f(ki_xy() * _ixy.x, ki_xy() * _ixy.y, kp_z() * (rdot_z - rdz_des) - gOffset);
 }
 
 void ModeLLC::run()
@@ -131,20 +144,28 @@ void ModeLLC::run()
         // Velocity tracking error
         Vector3f ev = vel - field.rdot_des;
 
-        // Integral xy con anti-windup por saturación
-        const float i_lim = I_XY_MAX / KI_XY;
-        _ixy.x = constrain_float(_ixy.x + ev.x * G_Dt, -i_lim, i_lim);
-        _ixy.y = constrain_float(_ixy.y + ev.y * G_Dt, -i_lim, i_lim);
+        // Integral xy con anti-windup: límite de contribución y sin integrar mientras
+        // la inclinación esté saturada (integración condicional, ronda B)
+        const float kixy = ki_xy();
+        if (kixy > 0.0f) {
+            if (!_xy_sat) {
+                const float i_lim = I_XY_MAX / kixy;
+                _ixy.x = constrain_float(_ixy.x + ev.x * G_Dt, -i_lim, i_lim);
+                _ixy.y = constrain_float(_ixy.y + ev.y * G_Dt, -i_lim, i_lim);
+            }
+        } else {
+            _ixy.zero();
+        }
 
         // Control law: u = kp * ev + ki * int(ev) - gOffset * e_z
-        u_d.x = KP_XY * ev.x + KI_XY * _ixy.x;
-        u_d.y = KP_XY * ev.y + KI_XY * _ixy.y;
-        u_d.z = KP_Z  * ev.z - gOffset;
+        u_d.x = kp_xy() * ev.x + kixy * _ixy.x;
+        u_d.y = kp_xy() * ev.y + kixy * _ixy.y;
+        u_d.z = kp_z()  * ev.z - gOffset;
         u_d_dot.zero();
 
         AP::logger().Write("VINT", "TimeUS,ix,iy,uix,uiy", "Qffff",
             AP_HAL::micros64(), (double)_ixy.x, (double)_ixy.y,
-            (double)(KI_XY * _ixy.x), (double)(KI_XY * _ixy.y));
+            (double)(kixy * _ixy.x), (double)(kixy * _ixy.y));
 
         AP::logger().Write("VFLD", "TimeUS,rdx,rdy,rdz,rho,rref,erho,mur,muz", "Qffffffff",
             AP_HAL::micros64(),
@@ -200,11 +221,21 @@ void ModeLLC::run()
     }
     }
 
-    // Log the actual force command (vis = estado del supervisor)
-    AP::logger().Write("UCMD", "TimeUS,ux,uy,uz,vis", "Qfffi",
+    // Ronda B: saturación de inclinación por la norma de u_xy (respecto a |u_z|)
+    float tilt_cmd_deg = 0.0f;
+    _xy_sat = saturateTilt(u_d, tilt_cmd_deg);
+
+    // Ronda B: yaw deseado = yaw de entrada al modo (el lazo traslacional es invariante en yaw)
+    if (g2.user_parameters.yaw_hold()) {
+        psi_d = _psi_hold;
+    }
+
+    // Log the actual force command (vis = estado del supervisor, tlt = inclinación pedida
+    // antes de saturar, sat = saturación activa)
+    AP::logger().Write("UCMD", "TimeUS,ux,uy,uz,vis,tlt,sat", "QfffifB",
         AP_HAL::micros64(),
         (double)u_d.x, (double)u_d.y, (double)u_d.z,
-        (int32_t)_sup);
+        (int32_t)_sup, (double)tilt_cmd_deg, (uint8_t)_xy_sat);
 
     // Handle motor spool states
     if (!motors->armed()) {
@@ -240,8 +271,9 @@ void ModeLLC::run()
         break;
     }
 
-    // Throttle output
-    attitude_control->set_throttle_out(refThrottle, true, g.throttle_filt);
+    // Throttle output. refThrottle = |u_d| ya es el empuje total (incluye la inclinación),
+    // así que el angle boost de ArduPilot lo compensaría dos veces: apagado por defecto (ronda B)
+    attitude_control->set_throttle_out(refThrottle, g2.user_parameters.angle_boost(), g.throttle_filt);
 
     // Log estimator state
     AP::logger().Write("MLLC", "TimeUS,px,py,pz,vx,vy,vz,ax,ay,az,h", "Qffffffffff",
@@ -250,6 +282,30 @@ void ModeLLC::run()
         (double)vel.x, (double)vel.y, (double)vel.z,
         (double)acc.x, (double)acc.y, (double)acc.z,
         (double)(vision_ok ? 1.0f : 0.0f));
+}
+
+// ---------------------------------------------------------------
+// Saturación de inclinación (ronda B): |u_xy| <= |u_z| * tan(theta_max).
+// Se satura la norma (no cada eje) para conservar la dirección de corrección, y respecto
+// a u_z para no alterar el empuje vertical. Devuelve true si la saturación está activa.
+// ---------------------------------------------------------------
+bool ModeLLC::saturateTilt(Vector3f& u, float& tilt_cmd_deg) const
+{
+    const float uz_abs = fabsf(u.z);
+    const float uxy = norm(u.x, u.y);
+    tilt_cmd_deg = degrees(atan2f(uxy, uz_abs));
+    if (u.z >= 0.0f || uxy <= 0.0f) {
+        return false;
+    }
+    const float tilt_max = constrain_float(g2.user_parameters.tilt_max_deg(), 5.0f, 45.0f);
+    const float uxy_max = uz_abs * tanf(radians(tilt_max));
+    if (uxy <= uxy_max) {
+        return false;
+    }
+    const float k = uxy_max / uxy;
+    u.x *= k;
+    u.y *= k;
+    return true;
 }
 
 // ---------------------------------------------------------------

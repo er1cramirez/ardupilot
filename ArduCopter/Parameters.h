@@ -4,6 +4,9 @@
 
 #include <AP_Common/AP_Common.h>
 #include "RC_Channel_Copter.h"
+#if USER_PARAMS_ENABLED
+#include "UserParameters.h"
+#endif
 #include <AP_Proximity/AP_Proximity.h>
 
 #if MODE_FOLLOW_ENABLED

@@ -1773,13 +1773,17 @@ private:
     float _abort_posD = 0.0f;
     bool _abort_posD_valid = false;
 
-    static constexpr float KP_XY = 0.03f;
-    static constexpr float KP_Z  = 0.095f;
+    // Ganancias: ahora son parámetros USR_KPXY, USR_KIXY, USR_KPZ (ronda B).
     // Integral en el lazo de velocidad xy (ronda A.2): cancela la deriva por perturbación
     // constante (corrida 82: ~2.8 cm/s con solo P). Fuera de TRACK se congela y se usa como trim.
-    static constexpr float KI_XY = 0.015f;
     static constexpr float I_XY_MAX = 0.02f;      // contribución máxima de la integral [throttle]
     Vector2f _ixy;                                // integral del error de velocidad xy [m]
+    bool _xy_sat = false;                         // saturación de inclinación activa (ciclo previo)
+    float _psi_hold = 0.0f;                       // yaw capturado al entrar al modo [rad]
+    float kp_xy() const;
+    float ki_xy() const;
+    float kp_z() const;
+    bool saturateTilt(Vector3f& u, float& tilt_cmd_deg) const;
     static constexpr uint32_t T_LOSS_MS  = 150;   // sin medición aceptada -> marcador perdido
     static constexpr uint32_t T_REACQ_MS = 200;   // mediciones continuas para volver a TRACK
     static constexpr float H_COMMIT   = 0.6f;     // [m] altura máx. (cámara) para bajar a ciegas
