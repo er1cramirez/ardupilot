@@ -1731,6 +1731,10 @@ private:
         float beta         = 0.6f;   // fracción del radio visible que se permite usar
         float tan_fov_half = 1.0f;   // tan(45°) para horizontal_fov = 1.57 rad
         float marker_half  = 0.25f;  // mitad del lado del marcador [m]
+
+        // Centrado débil dentro del tubo (ronda A.2): r_dot_des_xy += -k_center_in * r_xy
+        float k_center_in     = 0.15f;  // [1/s]
+        float v_center_in_max = 0.1f;   // [m/s]
     };
 
     // Output of the velocity field (for logging and control)
@@ -1771,6 +1775,11 @@ private:
 
     static constexpr float KP_XY = 0.03f;
     static constexpr float KP_Z  = 0.095f;
+    // Integral en el lazo de velocidad xy (ronda A.2): cancela la deriva por perturbación
+    // constante (corrida 82: ~2.8 cm/s con solo P). Fuera de TRACK se congela y se usa como trim.
+    static constexpr float KI_XY = 0.015f;
+    static constexpr float I_XY_MAX = 0.02f;      // contribución máxima de la integral [throttle]
+    Vector2f _ixy;                                // integral del error de velocidad xy [m]
     static constexpr uint32_t T_LOSS_MS  = 150;   // sin medición aceptada -> marcador perdido
     static constexpr uint32_t T_REACQ_MS = 200;   // mediciones continuas para volver a TRACK
     static constexpr float H_COMMIT   = 0.6f;     // [m] altura máx. (cámara) para bajar a ciegas

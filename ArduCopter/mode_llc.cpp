@@ -26,6 +26,7 @@ bool ModeLLC::init(bool ignore_checks)
 
     // Supervisor: arranca en HOLD y pasa a TRACK con mediciones continuas
     _sup = SupState::HOLD;
+    _ixy.zero();
     _reacq_start_ms = 0;
     _td_low_start_ms = 0;
     gcs().send_text(MAV_SEVERITY_INFO, "LLC: init, sup=HOLD");
@@ -71,7 +72,8 @@ Vector3f ModeLLC::verticalOnlyCommand(float rdz_des) const
         vD = 0.0f;
     }
     const float rdot_z = -vD;   // r = p_marcador - p_dron, marcador estático
-    return Vector3f(0.0f, 0.0f, KP_Z * (rdot_z - rdz_des) - gOffset);
+    // xy: integral congelada como trim (compensa la perturbación estimada en TRACK)
+    return Vector3f(KI_XY * _ixy.x, KI_XY * _ixy.y, KP_Z * (rdot_z - rdz_des) - gOffset);
 }
 
 void ModeLLC::run()
@@ -129,11 +131,20 @@ void ModeLLC::run()
         // Velocity tracking error
         Vector3f ev = vel - field.rdot_des;
 
-        // Control law: u = kp * ev - gOffset * e_z
-        u_d.x = KP_XY * ev.x;
-        u_d.y = KP_XY * ev.y;
+        // Integral xy con anti-windup por saturación
+        const float i_lim = I_XY_MAX / KI_XY;
+        _ixy.x = constrain_float(_ixy.x + ev.x * G_Dt, -i_lim, i_lim);
+        _ixy.y = constrain_float(_ixy.y + ev.y * G_Dt, -i_lim, i_lim);
+
+        // Control law: u = kp * ev + ki * int(ev) - gOffset * e_z
+        u_d.x = KP_XY * ev.x + KI_XY * _ixy.x;
+        u_d.y = KP_XY * ev.y + KI_XY * _ixy.y;
         u_d.z = KP_Z  * ev.z - gOffset;
         u_d_dot.zero();
+
+        AP::logger().Write("VINT", "TimeUS,ix,iy,uix,uiy", "Qffff",
+            AP_HAL::micros64(), (double)_ixy.x, (double)_ixy.y,
+            (double)(KI_XY * _ixy.x), (double)(KI_XY * _ixy.y));
 
         AP::logger().Write("VFLD", "TimeUS,rdx,rdy,rdz,rho,rref,erho,mur,muz", "Qffffffff",
             AP_HAL::micros64(),
@@ -290,6 +301,17 @@ ModeLLC::RelativeFieldOutput ModeLLC::computeRelativeVelocityField(
 
         out.rdot_des.x = -speed_radial * x * inv_rho;
         out.rdot_des.y = -speed_radial * y * inv_rho;
+    }
+
+    // 6b) Ronda A.2: centrado débil también dentro del tubo (acotado)
+    if (p.k_center_in > 0.0f) {
+        Vector2f c(-p.k_center_in * x, -p.k_center_in * y);
+        const float cn = c.length();
+        if (cn > p.v_center_in_max) {
+            c *= p.v_center_in_max / cn;
+        }
+        out.rdot_des.x += c.x;
+        out.rdot_des.y += c.y;
     }
 
     // 7) Descent enable factor: reduced when off-center
