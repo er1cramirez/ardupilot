@@ -1686,7 +1686,7 @@ private:
     Vector3f refAngularVelocity;
     float refThrottle;
     float _dt;
-    const float gOffset = 0.308f; // Adjust this based on your vehicle
+    const float gOffset = 0.297f; // Throttle de hover medido en SITL (corrida 80); antes 0.308
     
     Vector3f _position, _velocity, _acceleration; // position, velocity and acceleration in intertial frame
     Vector3f _force_target_recvd = {0.0f, 0.0f, 0.0f}; // target force in body frame
@@ -1724,6 +1724,13 @@ private:
         // Numerical protections
         float rho_eps  = 0.02f;    // Min rho to avoid division by zero
         float h_eps    = 0.05f;    // Height deadband near landing [m]
+
+        // Tubo acotado por el cono de visibilidad de la cámara (ronda A)
+        // rho_ref = min(rho_max*tanh(k_slope*h), beta*(h*tan(FOV/2) - s/2))
+        bool  fov_aware    = true;
+        float beta         = 0.6f;   // fracción del radio visible que se permite usar
+        float tan_fov_half = 1.0f;   // tan(45°) para horizontal_fov = 1.57 rad
+        float marker_half  = 0.25f;  // mitad del lado del marcador [m]
     };
 
     // Output of the velocity field (for logging and control)
@@ -1742,6 +1749,41 @@ private:
 
     // Velocity field parameters (can be tuned)
     RelativeFieldParams _field_params;
+
+    // ---------------------------------------------------------------
+    // Supervisor de pérdida de marcador (ronda A). Sustituye al fallback por GPS.
+    //   HOLD:      sin visión desde la entrada al modo -> nivelado, velocidad vertical 0
+    //   TRACK:     campo de velocidades + P (comportamiento normal)
+    //   BLIND:     marcador perdido cerca y centrado -> nivelado, descenso a V_BLIND
+    //   ABORT:     marcador perdido lejos o descentrado -> nivelado, ascenso a V_ABORT (con tope)
+    //   TOUCHDOWN: contacto detectado en BLIND -> rampa de throttle a 0 y desarme
+    // Sin visión la velocidad vertical viene del EKF (baro+IMU), que no requiere GPS.
+    // ---------------------------------------------------------------
+    enum class SupState : uint8_t { HOLD = 0, TRACK = 1, BLIND = 2, ABORT = 3, TOUCHDOWN = 4 };
+    SupState _sup = SupState::HOLD;
+    uint32_t _reacq_start_ms = 0;     // inicio de mediciones continuas (para volver a TRACK)
+    uint32_t _blind_start_ms = 0;
+    uint32_t _td_low_start_ms = 0;    // inicio de |vD| bajo en BLIND
+    uint32_t _td_ramp_start_ms = 0;
+    float _td_thr0 = 0.0f;
+    float _abort_posD = 0.0f;
+    bool _abort_posD_valid = false;
+
+    static constexpr float KP_XY = 0.03f;
+    static constexpr float KP_Z  = 0.095f;
+    static constexpr uint32_t T_LOSS_MS  = 150;   // sin medición aceptada -> marcador perdido
+    static constexpr uint32_t T_REACQ_MS = 200;   // mediciones continuas para volver a TRACK
+    static constexpr float H_COMMIT   = 0.6f;     // [m] altura máx. (cámara) para bajar a ciegas
+    static constexpr float RHO_COMMIT = 0.12f;    // [m] radio máx. para bajar a ciegas
+    static constexpr float V_BLIND = 0.3f;        // [m/s] descenso a ciegas
+    static constexpr float V_ABORT = 0.5f;        // [m/s] ascenso en ABORT
+    static constexpr float ABORT_CLIMB_MAX = 1.5f;// [m] ascenso máximo en ABORT
+    static constexpr float TD_VEL = 0.1f;         // [m/s] |vD| para considerar contacto
+    static constexpr uint32_t TD_TIME_MS = 300;   // tiempo con |vD| bajo para declarar contacto
+    static constexpr float TD_RAMP_S = 1.0f;      // rampa de throttle a 0 tras contacto
+
+    void setSupState(SupState s, const Vector3f& r_est);
+    Vector3f verticalOnlyCommand(float rdz_des) const;
 
 protected:
    const char *name() const override { return "LLC"; }

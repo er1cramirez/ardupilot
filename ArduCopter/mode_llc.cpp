@@ -1,9 +1,14 @@
 #include "Copter.h"
 #define CTRL_TRANSFORMATION 0
 
-// Set to 1 to enable vision-based velocity field control
-// Set to 0 to use AHRS poshold (safe fallback)
-#define USE_VISION_CONTROL 1
+// ---------------------------------------------------------------------------
+// ModeLLC — aterrizaje por visión con campo de velocidades relativo.
+// Ronda A (2026-10-20):
+//   - Tubo del campo acotado por el cono de visibilidad de la cámara (fov_aware).
+//   - Supervisor de pérdida de marcador (HOLD/TRACK/BLIND/ABORT/TOUCHDOWN) que
+//     sustituye al fallback de poshold por GPS (no existe en el escenario sin GPS).
+//   - El estimador se congela al perder mediciones y se reinicia al recuperarlas.
+// ---------------------------------------------------------------------------
 
 bool ModeLLC::init(bool ignore_checks)
 {
@@ -18,9 +23,55 @@ bool ModeLLC::init(bool ignore_checks)
 
     _return_home = true;
     _have_new_force_target = false;
-    gcs().send_text(MAV_SEVERITY_INFO, "Sys ID: %d", (int)g.sysid_this_mav);
+
+    // Supervisor: arranca en HOLD y pasa a TRACK con mediciones continuas
+    _sup = SupState::HOLD;
+    _reacq_start_ms = 0;
+    _td_low_start_ms = 0;
+    gcs().send_text(MAV_SEVERITY_INFO, "LLC: init, sup=HOLD");
 
     return true;
+}
+
+void ModeLLC::setSupState(SupState s, const Vector3f& r_est)
+{
+    if (s == _sup) {
+        return;
+    }
+    const uint32_t now_ms = AP_HAL::millis();
+    switch (s) {
+    case SupState::BLIND:
+        _blind_start_ms = now_ms;
+        _td_low_start_ms = 0;
+        break;
+    case SupState::ABORT:
+        _abort_posD_valid = ahrs.get_relative_position_D_origin(_abort_posD);
+        _reacq_start_ms = 0;
+        break;
+    case SupState::TOUCHDOWN:
+        _td_ramp_start_ms = now_ms;
+        break;
+    default:
+        break;
+    }
+    AP::logger().Write("SUPV", "TimeUS,from,to,h,rho", "QBBff",
+        AP_HAL::micros64(), (uint8_t)_sup, (uint8_t)s,
+        (double)r_est.z, (double)norm(r_est.x, r_est.y));
+    gcs().send_text(MAV_SEVERITY_INFO, "LLC: sup %u -> %u (h=%.2f rho=%.2f)",
+        (unsigned)_sup, (unsigned)s, (double)r_est.z, (double)norm(r_est.x, r_est.y));
+    _sup = s;
+}
+
+// Comando sin visión: nivelado (u_xy = 0) y lazo de velocidad vertical con la
+// velocidad vertical del EKF (baro + IMU, disponible sin GPS). Plataforma estática.
+Vector3f ModeLLC::verticalOnlyCommand(float rdz_des) const
+{
+    float vD = 0.0f;
+    if (!ahrs.get_vert_pos_rate_D(vD)) {
+        vD = 0.0f;
+    }
+    const float rdot_z = -vD;   // r = p_marcador - p_dron, marcador estático
+    return Vector3f(0.0f, 0.0f, KP_Z * (rdot_z - rdz_des) - gOffset);
 }
 
 void ModeLLC::run()
@@ -31,130 +82,118 @@ void ModeLLC::run()
     Vector3f u_d(0.0f, 0.0f, 0.0f);
     Vector3f u_d_dot(0.0f, 0.0f, 0.0f);
 
-    // --- Read vision estimator state (used by both control paths) ---
+    // --- Read vision estimator state ---
     const VisionStateEstimator& vest = copter.vision_estimator;
     Vector3f pos = vest.get_position();
     Vector3f vel = vest.get_velocity();
     Vector3f acc = vest.get_acceleration();
     const bool vision_ok = vest.is_healthy();
+    const uint32_t now_ms = AP_HAL::millis();
+    const bool fresh = vest.ms_since_valid() < T_LOSS_MS;
 
-    // Flag to track which controller is active this cycle
-    bool using_vision = false;
+    // ---------------- Supervisor: transiciones ----------------
+    switch (_sup) {
+    case SupState::HOLD:
+    case SupState::ABORT:
+        // Volver a TRACK solo con mediciones continuas durante T_REACQ_MS
+        if (!fresh) {
+            _reacq_start_ms = 0;
+        } else if (_reacq_start_ms == 0) {
+            _reacq_start_ms = now_ms;
+        } else if (vision_ok && (now_ms - _reacq_start_ms) > T_REACQ_MS) {
+            setSupState(SupState::TRACK, pos);
+        }
+        break;
+    case SupState::TRACK:
+        if (!fresh) {
+            const float rho_l = norm(pos.x, pos.y);
+            if (pos.z < H_COMMIT && rho_l < RHO_COMMIT) {
+                setSupState(SupState::BLIND, pos);
+            } else {
+                setSupState(SupState::ABORT, pos);
+            }
+        }
+        break;
+    case SupState::BLIND:
+    case SupState::TOUCHDOWN:
+        // Compromiso: no se regresa a TRACK durante el tramo final
+        break;
+    }
 
-#if USE_VISION_CONTROL
-    // --- Vision-based P controller on velocity field error ---
-    if (vision_ok) {
-        using_vision = true;
-
+    // ---------------- Ley de control según estado ----------------
+    switch (_sup) {
+    case SupState::TRACK: {
         // Compute velocity field
         RelativeFieldOutput field = computeRelativeVelocityField(pos, _field_params);
 
         // Velocity tracking error
         Vector3f ev = vel - field.rdot_des;
 
-        // P controller gains (per-axis)
-        constexpr float kp_xy = 0.03f;   // Horizontal gain
-        constexpr float kp_z  = 0.095f;   // Vertical gain
-
         // Control law: u = kp * ev - gOffset * e_z
-        u_d.x = kp_xy * ev.x;
-        u_d.y = kp_xy * ev.y;
-        u_d.z = kp_z  * ev.z - gOffset;
-
-        // u_dot = 0 for initial P test
+        u_d.x = KP_XY * ev.x;
+        u_d.y = KP_XY * ev.y;
+        u_d.z = KP_Z  * ev.z - gOffset;
         u_d_dot.zero();
 
-        // Log velocity field output
         AP::logger().Write("VFLD", "TimeUS,rdx,rdy,rdz,rho,rref,erho,mur,muz", "Qffffffff",
             AP_HAL::micros64(),
             (double)field.rdot_des.x, (double)field.rdot_des.y, (double)field.rdot_des.z,
-            (double)field.rho,
-            (double)field.rho_ref,
-            (double)field.e_rho,
-            (double)field.mu_r,
-            (double)field.mu_z);
+            (double)field.rho, (double)field.rho_ref, (double)field.e_rho,
+            (double)field.mu_r, (double)field.mu_z);
 
-        // Debug log: r_dot, r_dot_des, e_v
         AP::logger().Write("VDBG", "TimeUS,vx,vy,vz,dx,dy,dz,ex,ey,ez", "Qfffffffff",
             AP_HAL::micros64(),
             (double)vel.x, (double)vel.y, (double)vel.z,
             (double)field.rdot_des.x, (double)field.rdot_des.y, (double)field.rdot_des.z,
             (double)ev.x, (double)ev.y, (double)ev.z);
-
-        // Log the actual force command
-        AP::logger().Write("UCMD", "TimeUS,ux,uy,uz,vis", "Qfffi",
-            AP_HAL::micros64(),
-            (double)u_d.x, (double)u_d.y, (double)u_d.z,
-            (int32_t)1);
+        break;
     }
-#endif
-
-    // --- Fallback: AHRS poshold controller ---
-    if (!using_vision) {
-        float x_ref = 0.0f, y_ref = 0.0f, z_ref = 4.0f;
-        float mass = 0.03351f;
-        float gravity = 9.81f;
-        Vector3f e_z(0.0f, 0.0f, 1.0f);
-
-        Vector3f x_d(x_ref, y_ref, -z_ref);
-        Vector3f x_d_dot(0.0f, 0.0f, 0.0f);
-        Vector3f x_d_ddot(0.0f, 0.0f, 0.0f);
-        Vector3f x_d_dddot(0.0f, 0.0f, 0.0f);
-
-        Matrix3f kp1(-0.5f, 0.0f, 0.0f,
-            0.0f, -0.5f, 0.0f,
-            0.0f, 0.0f, -0.5f);
-
-        Matrix3f kd1(-0.3f, 0.0f, 0.0f,
-            0.0f, -0.3f, 0.0f,
-            0.0f, 0.0f, -0.3f);
-
-        if(ahrs.get_relative_position_NED_home(_position) && ahrs.get_velocity_NED(_velocity))
-        {
-            _acceleration = ahrs.get_accel_ef();
-
-            if(_return_home)
-            {
-                Vector3f x = _position;
-                Vector3f x_dot = _velocity;
-                Vector3f x_ddot = _acceleration + e_z * gravity;
-
-                Vector3f xe = x - x_d;
-                Vector3f xe_dot = x_dot - x_d_dot;
-                Vector3f xe_ddot = x_ddot - x_d_ddot;
-
-                u_d = kp1 * xe + kd1 * xe_dot - e_z * mass * gravity + x_d_ddot * mass;
-                u_d_dot = kp1 * xe_dot + kd1 * xe_ddot + x_d_dddot * mass;
+    case SupState::HOLD:
+        u_d = verticalOnlyCommand(0.0f);
+        break;
+    case SupState::ABORT: {
+        float rdz_des = V_ABORT;   // r.z crece = el dron sube
+        float posD;
+        if (_abort_posD_valid && ahrs.get_relative_position_D_origin(posD) &&
+            (_abort_posD - posD) > ABORT_CLIMB_MAX) {
+            rdz_des = 0.0f;        // tope de ascenso alcanzado: mantener altura
+        }
+        u_d = verticalOnlyCommand(rdz_des);
+        break;
+    }
+    case SupState::BLIND: {
+        u_d = verticalOnlyCommand(-V_BLIND);
+        // Detección de contacto: |vD| bajo de forma sostenida mientras se pide descenso
+        float vD = 0.0f;
+        ahrs.get_vert_pos_rate_D(vD);
+        if ((now_ms - _blind_start_ms) > 300 && fabsf(vD) < TD_VEL) {
+            if (_td_low_start_ms == 0) {
+                _td_low_start_ms = now_ms;
+            } else if ((now_ms - _td_low_start_ms) > TD_TIME_MS) {
+                _td_thr0 = u_d.length();
+                setSupState(SupState::TOUCHDOWN, pos);
             }
+        } else {
+            _td_low_start_ms = 0;
         }
-
-        // Log force command from poshold
-        AP::logger().Write("UCMD", "TimeUS,ux,uy,uz,vis", "Qfffi",
-            AP_HAL::micros64(),
-            (double)u_d.x, (double)u_d.y, (double)u_d.z,
-            (int32_t)0);
-
-        // Still compute velocity field for observation if estimator is healthy
-        if (vision_ok) {
-            RelativeFieldOutput field = computeRelativeVelocityField(pos, _field_params);
-
-            AP::logger().Write("VFLD", "TimeUS,rdx,rdy,rdz,rho,rref,erho,mur,muz", "Qffffffff",
-                AP_HAL::micros64(),
-                (double)field.rdot_des.x, (double)field.rdot_des.y, (double)field.rdot_des.z,
-                (double)field.rho,
-                (double)field.rho_ref,
-                (double)field.e_rho,
-                (double)field.mu_r,
-                (double)field.mu_z);
-
-            Vector3f ev = vel - field.rdot_des;
-            AP::logger().Write("VDBG", "TimeUS,vx,vy,vz,dx,dy,dz,ex,ey,ez", "Qfffffffff",
-                AP_HAL::micros64(),
-                (double)vel.x, (double)vel.y, (double)vel.z,
-                (double)field.rdot_des.x, (double)field.rdot_des.y, (double)field.rdot_des.z,
-                (double)ev.x, (double)ev.y, (double)ev.z);
-        }
+        break;
     }
+    case SupState::TOUCHDOWN: {
+        const float frac = 1.0f - ((now_ms - _td_ramp_start_ms) * 1.0e-3f) / TD_RAMP_S;
+        const float thr = _td_thr0 * MAX(frac, 0.0f);
+        u_d = Vector3f(0.0f, 0.0f, -thr);
+        if (frac <= 0.0f && motors->armed()) {
+            copter.arming.disarm(AP_Arming::Method::LANDED);
+        }
+        break;
+    }
+    }
+
+    // Log the actual force command (vis = estado del supervisor)
+    AP::logger().Write("UCMD", "TimeUS,ux,uy,uz,vis", "Qfffi",
+        AP_HAL::micros64(),
+        (double)u_d.x, (double)u_d.y, (double)u_d.z,
+        (int32_t)_sup);
 
     // Handle motor spool states
     if (!motors->armed()) {
@@ -224,6 +263,13 @@ ModeLLC::RelativeFieldOutput ModeLLC::computeRelativeVelocityField(
     //    High altitude: rho_ref ≈ rho_max (relaxed centering)
     //    Near ground:   rho_ref → 0 (strict centering)
     out.rho_ref = p.rho_max * tanhf(p.k_slope * h);
+
+    //    Ronda A: el tubo nunca excede una fracción beta del radio visible,
+    //    rho_vis = h*tan(FOV/2) - s/2 (marcador completo dentro de la imagen, dron nivelado)
+    if (p.fov_aware) {
+        const float rho_vis = MAX(h * p.tan_fov_half - p.marker_half, 0.0f);
+        out.rho_ref = MIN(out.rho_ref, p.beta * rho_vis);
+    }
 
     // 4) Radial error: only active outside the tube
     float e_rho = rho - out.rho_ref;

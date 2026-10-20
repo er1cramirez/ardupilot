@@ -27,6 +27,7 @@ void VisionStateEstimator::init()
     _last_predict_sec = 0.0f;
     _last_valid_meas_ms = 0;
     _log_counter = 0;
+    _frozen = false;
 
     // Zero all filter states
     for (uint8_t i = 0; i < 3; i++) {
@@ -63,6 +64,20 @@ void VisionStateEstimator::predict(float now_sec)
 
     // Only run KF if we have been initialized with at least one measurement
     if (_initialized) {
+        // --- Sin mediciones recientes: congelar en vez de extrapolar ---
+        if (!_pending.valid && (AP_HAL::millis() - _last_valid_meas_ms) > HOLD_MS) {
+            if (!_frozen) {
+                for (uint8_t i = 0; i < 3; i++) {
+                    _kf[i].x[2] = 0.0f;   // aceleración
+                    _kf[i].x[3] = 0.0f;   // jerk
+                }
+                _frozen = true;
+                _update_outputs();
+            }
+            _last_predict_sec = now_sec;
+            return;
+        }
+
         // --- KF Predict step for each axis ---
         for (uint8_t i = 0; i < 3; i++) {
             _kf[i].predict(dt, SIGMA_JERK_SQ);
@@ -119,8 +134,8 @@ bool VisionStateEstimator::update_measurement(const Vector3f &position_ned,
         return false;
     }
 
-    // If not initialized, initialize with first valid measurement
-    if (!_initialized) {
+    // Initialize with first valid measurement, or re-initialize after a long gap
+    if (!_initialized || (AP_HAL::millis() - _last_valid_meas_ms) > RESET_MS) {
         for (uint8_t i = 0; i < 3; i++) {
             _kf[i].init(position_ned[i], R_BASE, P_INIT_VEL,
                         P_INIT_ACC, P_INIT_JERK);
@@ -141,6 +156,7 @@ bool VisionStateEstimator::update_measurement(const Vector3f &position_ned,
     _pending.valid = true;
 
     _last_valid_meas_ms = AP_HAL::millis();
+    _frozen = false;
     return true;
 }
 

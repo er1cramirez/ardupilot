@@ -46,6 +46,11 @@ public:
     // Returns true if the estimator has been initialized with at least one measurement
     bool is_initialized() const { return _initialized; }
 
+    // Milisegundos desde la última medición aceptada (UINT32_MAX si nunca)
+    uint32_t ms_since_valid() const {
+        return _initialized ? (AP_HAL::millis() - _last_valid_meas_ms) : UINT32_MAX;
+    }
+
 private:
     // ---------------------------------------------------------------
     // Per-axis Kalman Filter: 4 states [position, velocity, accel, jerk]
@@ -87,6 +92,7 @@ private:
     float _last_predict_sec;    // Timestamp of last predict() call
     uint32_t _last_valid_meas_ms;  // millis() of last accepted measurement
     uint8_t _log_counter;          // Counter to throttle logging to ~10Hz
+    bool _frozen;                  // True mientras no hay mediciones (estado congelado)
 
     // --- Tunable parameters ---
     // Vision flags bitmask (matches CUSTOM_VISION_DATA flags field)
@@ -97,6 +103,10 @@ private:
 
     // Timeout for health check
     static constexpr uint32_t TIMEOUT_MS = 500;        // ms without valid measurement -> unhealthy
+    // Ronda A: sin medición > HOLD_MS se congela el estado (no se extrapola con el modelo de jerk);
+    // al recuperar tras > RESET_MS se reinicializa con la nueva medición.
+    static constexpr uint32_t HOLD_MS = 100;
+    static constexpr uint32_t RESET_MS = 500;
 
     // Measurement noise (position variance in m²)
     static constexpr float R_BASE = 1.0e-4f;             // Base measurement noise at nominal reprojection error
